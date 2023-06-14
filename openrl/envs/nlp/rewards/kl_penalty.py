@@ -15,7 +15,7 @@ class KLPenalty(nn.Module):
         self,
         action_space: gym.Space,
         ref_model: str,
-        apply_model_parallel: bool = True,
+        apply_model_parallel: bool = False,
     ):
         super().__init__()
 

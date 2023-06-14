@@ -73,6 +73,10 @@ def make(
     elif id in openrl.envs.nlp_all_envs:
         from openrl.envs.nlp import make_nlp_envs
 
+        from transformers import AutoTokenizer
+        tokenizer_name = cfg.env.args["tokenizer_path"]
+        cfg["tokenizer"] = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
+        
         env_fns = make_nlp_envs(
             id=id, env_num=env_num, render_mode=convert_render_mode, cfg=cfg, **kwargs
         )

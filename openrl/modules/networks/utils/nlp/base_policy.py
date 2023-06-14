@@ -130,7 +130,7 @@ class LMActorCriticPolicy(nn.Module):
         optimizer_kwargs: Dict[str, Any] = {},
         weight_decay: float = 1e-6,
         use_sde: bool = None,
-        apply_model_parallel: bool = True,
+        apply_model_parallel: bool = False,
         optimizer_class: torch.optim.Optimizer = torch.optim.AdamW,
         generation_kwargs: Dict[str, Any] = {},
         prompt_truncation_side: str = "left",

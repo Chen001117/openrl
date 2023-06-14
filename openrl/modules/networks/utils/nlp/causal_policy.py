@@ -15,10 +15,10 @@ from openrl.modules.networks.utils.nlp.base_policy import (
     PolicyType,
     ValueOutput,
 )
-from openrl.modules.networks.utils.nlp.hf_generation_utils import (
-    override_generation_routines,
-    unwrap_generation_routines,
-)
+# from openrl.modules.networks.utils.nlp.hf_generation_utils import (
+#     override_generation_routines,
+#     unwrap_generation_routines,
+# )
 from openrl.modules.utils.valuenorm import ValueNorm
 
 
@@ -65,7 +65,7 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy):
     @property
     def policy(self):
         policy_model = self._policy_model
-        policy_model.__class__ = unwrap_generation_routines(type(policy_model))
+        # policy_model.__class__ = unwrap_generation_routines(type(policy_model))
         return policy_model
 
     def _build_model_heads(self, model_name: str, config: str, device: str):
@@ -81,16 +81,16 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy):
             model_name, config=config
         )
 
-        self._policy_model.__class__ = override_generation_routines(
-            type(self._policy_model)
-        )
+        # self._policy_model.__class__ = override_generation_routines(
+        #     type(self._policy_model)
+        # )
 
         self._value_model = AutoModelForCausalLM.from_pretrained(
             model_name, config=config
         )
 
         self._value_head = nn.Linear(
-            self._value_model.config.hidden_size, 1, bias=False
+            self._value_model.config.word_embed_proj_dim, 1, bias=False
         )
         self.value_normalizer = (
             ValueNorm(1, device=device) if self._use_valuenorm else None
@@ -106,15 +106,13 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy):
                 if self._use_valuenorm:
                     self.value_normalizer.to(self.device)
             else:  # else defaults to data parallel
-                self._policy_model = torch.nn.DataParallel(self._policy_model)
-                self._value_model = torch.nn.DataParallel(self._value_model)
+                self._policy_model = torch.nn.DataParallel(self._policy_model.to("cuda:0"))
+                self._value_model = torch.nn.DataParallel(self._value_model.to("cuda:0"))
                 self._value_head = torch.nn.DataParallel(
-                    self._value_head.to(self.device)
+                    self._value_head.to("cuda:0")
                 )
                 if self._use_valuenorm:
-                    self.value_normalizer = torch.nn.DataParallel(
-                        self.value_normalizer.to(self.device)
-                    )
+                    self.value_normalizer = self.value_normalizer.to("cuda:0")
 
     def _prepare_inputs_for_model(
         self,
