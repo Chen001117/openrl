@@ -2,8 +2,8 @@
 from openrl.configs.config import create_config_parser
 from openrl.envs.common import make
 from openrl.modules.common import PPONet as Net
-from openrl.modules.networks.policy_value_network_gpt import (
-    PolicyValueNetworkGPT as PolicyValueNetwork,
+from openrl.modules.networks.policy_value_network_nlp import (
+    PolicyValueNetworkNLP as PolicyValueNetwork,
 )
 from openrl.runners.common import PPOAgent as Agent
 
@@ -13,7 +13,7 @@ def train():
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
 
-    env_num = 10
+    env_num = 5
     env = make(
         "daily_dialog",
         env_num=env_num,

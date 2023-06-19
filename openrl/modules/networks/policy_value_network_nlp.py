@@ -19,11 +19,12 @@ from typing import Any
 
 import torch
 
-from openrl.modules.networks.utils.nlp.causal_policy import CausalLMActorCriticPolicy
+from openrl.modules.networks.utils.nlp.gpt_causal_lm import GPTCausalLM
+from openrl.modules.utils.valuenorm import ValueNorm
+
 from openrl.utils.util import check_v2 as check
 
-
-class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
+class PolicyValueNetworkNLP(GPTCausalLM):
     def __init__(
         self,
         cfg: Any,
@@ -31,24 +32,21 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
         action_space,
         device=torch.device("cpu"),
         use_half=False,
-        disable_drop_out: bool = True,
     ):
-        self.disable_drop_out = disable_drop_out
-        self._use_valuenorm = cfg.use_valuenorm
-        super(CausalLMActorCriticPolicy, self).__init__(
-            input_space,
-            action_space,
-            model_name=cfg.model_path,
-            device=device,
-        )
         self.use_half = use_half
+        self._disable_drop_out = cfg.disable_drop_out
+        self._use_valuenorm = cfg.use_valuenorm
         self.tpdv = dict(dtype=torch.float32, device=device)
+        
+        super(PolicyValueNetworkNLP, self).__init__(
+            input_space, action_space, cfg.model_path
+        )
 
-    def get_actor_para(self):
-        return self._policy_model.parameters()
-
-    def get_critic_para(self):
-        return self._value_model.parameters()
+        self._use_valuenorm = cfg.use_valuenorm
+        if self._use_valuenorm:
+            self.value_normalizer = ValueNorm(1, device=device)
+        else:
+            self.value_normalizer = None
 
     def forward(self, forward_type, *args, **kwargs):
         if forward_type == "original":
@@ -60,6 +58,12 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
         else:
             raise NotImplementedError
 
+    def get_actor_para(self):
+        return self.policy_model.parameters()
+
+    def get_critic_para(self):
+        return self.value_model.parameters()
+
     def get_actions(
         self, obs, rnn_states, masks, available_actions=None, deterministic=False
     ):
@@ -67,14 +71,14 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
             obs[key] = check(obs[key], self.use_half, self.tpdv)
         rnn_states = check(rnn_states, self.use_half, self.tpdv)
 
-        past_model_kwargs = None
-        policy_output, past_model_kwargs = super().get_distribution(
-            obs, past_model_kwargs
-        )
+        policy_output = super().get_distribution(obs)
         actions = policy_output.mode() if deterministic else policy_output.sample()
         action_log_probs = policy_output.log_prob(actions)
 
-        return actions.unsqueeze(-1), action_log_probs.unsqueeze(-1), rnn_states
+        actions = actions.unsqueeze(-1)
+        action_log_probs = action_log_probs.unsqueeze(-1)
+
+        return actions, action_log_probs, rnn_states
         # TODO: add past_model_kwargs, i.e., past key value.
 
     def eval_actions(
@@ -82,32 +86,21 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
     ):
         for key in obs.keys():
             obs[key] = check(obs[key], self.use_half, self.tpdv)
-        action = check(action, self.use_half, self.tpdv).squeeze()
+        action = check(action, self.use_half, self.tpdv)
+        rnn_states = check(rnn_states, self.use_half, self.tpdv)
+        
+        log_probs, dist_entropy, values = super().evaluate_actions(obs, action)
+        
+        action_log_probs = log_probs.unsqueeze(-1)
+        dist_entropy = dist_entropy.mean()
 
-        eval_output = super().evaluate_actions(obs, action)
-        action_log_probs = eval_output.log_prob
-        dist_entropy = eval_output.entropy
-        values = eval_output.values
-
-        return action_log_probs.unsqueeze(-1), dist_entropy.mean(), values
+        return action_log_probs, dist_entropy, values
 
     def get_values(self, obs, rnn_states, masks):
         for key in obs.keys():
             obs[key] = check(obs[key], self.use_half, self.tpdv)
         rnn_states = check(rnn_states, self.use_half, self.tpdv)
 
-        value_output = super().forward_value(obs)
-        values = value_output.values
+        values = super().forward_value(obs)
 
         return values, rnn_states
-
-    def get_log_probs_ref_model(self, obs, action):
-        for key in obs.keys():
-            obs[key] = check(obs[key], self.use_half, self.tpdv)
-        action = check(action, self.use_half, self.tpdv)
-        action = action.squeeze(-1)
-
-        policy_output = super().get_log_probs_ref_model(obs, action)
-        action_log_probs = policy_output.log_probs
-
-        return action_log_probs.detach().cpu().numpy()

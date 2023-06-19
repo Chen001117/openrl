@@ -9,6 +9,56 @@ from transformers.modeling_utils import unwrap_model
 
 from openrl.envs.nlp.utils.distribution import CategoricalDistribution
 
+def get_train_ds_config(offload, stage=0):
+
+    device = "cpu" if offload else "none"
+    zero_opt_dict = {
+        "stage": stage,
+        "stage3_param_persistence_threshold": 1e4,
+        "offload_param": {
+            "device": device
+        },
+        "memory_efficient_linear": False
+    }
+    return {
+        "train_batch_size": -1,
+        "train_micro_batch_size_per_gpu": -1,
+        "steps_per_print": 10,
+        "zero_optimization": zero_opt_dict,
+        "fp16": {
+            "enabled": True
+        },
+        "gradient_clipping": 1.0,
+        "prescale_gradients": False,
+        "wall_clock_breakdown": False
+    }
+
+def get_optimizer_grouped_parameters(model,
+                                     weight_decay,
+                                     no_decay_name_list=[
+                                         "bias", "LayerNorm.weight"
+                                     ]):
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p for n, p in model.named_parameters()
+                if (not any(nd in n
+                            for nd in no_decay_name_list) and p.requires_grad)
+            ],
+            "weight_decay":
+            weight_decay,
+        },
+        {
+            "params": [
+                p for n, p in model.named_parameters()
+                if (any(nd in n
+                        for nd in no_decay_name_list) and p.requires_grad)
+            ],
+            "weight_decay":
+            0.0,
+        },
+    ]
+    return optimizer_grouped_parameters
 
 class KLPenalty(nn.Module):
     def __init__(
@@ -22,12 +72,20 @@ class KLPenalty(nn.Module):
         # reference model
         self._apply_model_parallel = apply_model_parallel
         self._ref_net = AutoModelForCausalLM.from_pretrained(ref_model)
+        self._ref_net = self._ref_net.to("cuda:0")
         self._ref_net = self._ref_net.eval()
-        if torch.cuda.is_available():
-            if self._apply_model_parallel and self._ref_net.is_parallelizable:
-                self._ref_net.parallelize()
-            else:  # else defaults to data parallel
-                self._ref_net = torch.nn.DataParallel(self._ref_net)
+
+        import deepspeed
+
+        ds_config = get_train_ds_config(offload=True)
+        ds_config['train_micro_batch_size_per_gpu'] = 32
+        ds_config['train_batch_size'] = 64
+
+        # DeepSpeed Engine
+        self.ref_engine, *_ = deepspeed.initialize(
+            model=self._ref_net,
+            config=ds_config
+        )
 
         # alpha adjustment
         self._alpha = 0.2
@@ -55,20 +113,16 @@ class KLPenalty(nn.Module):
         input_ids = torch.squeeze(input_ids, dim=1)
         attention_mask = torch.squeeze(attention_mask, dim=1)
 
-        self._ref_net = self._ref_net.eval()
+        past_model_kwargs = { "attention_mask": attention_mask}
 
-        if not past_model_kwargs:
-            past_model_kwargs = {
-                "attention_mask": attention_mask,
-            }
+        self._ref_net = self._ref_net.eval()
 
         model_inputs = self._prepare_inputs_for_model(
             self._ref_net, input_ids, past_model_kwargs
         )
 
         with torch.no_grad():
-            output = self._ref_net(output_hidden_states=True, **model_inputs)
-            output["past_key_values"] = None
+            output = self.ref_engine(output_hidden_states=True, **model_inputs)
             next_token_logits = output.logits[:, -1, :]
             dist = self._action_dist.proba_distribution(action_logits=next_token_logits)
             action_input = actions.to(next_token_logits.device)
@@ -93,19 +147,24 @@ class KLPenalty(nn.Module):
         input_ids: torch.tensor,
         model_kwargs: Optional[Dict[str, torch.tensor]] = None,
     ):
+        
         model_inputs = unwrap_model(model).prepare_inputs_for_generation(
             input_ids, **model_kwargs
         )
 
-        if self._apply_model_parallel and unwrap_model(model).is_parallelizable:
-            # if model is in parallel mode, move the tensors to the first device
-            model_inputs = {
-                key: (
-                    value.to(model.transformer.first_device)
-                    if isinstance(value, torch.Tensor)
-                    and hasattr(model.transformer, "first_device")
-                    else value
-                )
-                for key, value in model_inputs.items()
-            }
+        for key in model_inputs:
+            if model_inputs[key] is not None:
+                model_inputs[key] = model_inputs[key].to(self.ref_engine.device)
+
+        # if self._apply_model_parallel and unwrap_model(model).is_parallelizable:
+        #     # if model is in parallel mode, move the tensors to the first device
+        #     model_inputs = {
+        #         key: (
+        #             value.to(model.transformer.first_device)
+        #             if isinstance(value, torch.Tensor)
+        #             and hasattr(model.transformer, "first_device")
+        #             else value
+        #         )
+        #         for key, value in model_inputs.items()
+        #     }
         return model_inputs

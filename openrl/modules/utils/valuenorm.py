@@ -24,15 +24,15 @@ class ValueNorm(nn.Module):
         self.per_element_update = per_element_update
         self.tpdv = dict(dtype=torch.float32, device=device)
 
-        # self.running_mean = nn.Parameter(torch.zeros(input_shape), requires_grad=False).to(**self.tpdv)
-        # self.running_mean_sq = nn.Parameter(torch.zeros(input_shape), requires_grad=False).to(**self.tpdv)
-        # self.debiasing_term = nn.Parameter(torch.tensor(0.0), requires_grad=False).to(**self.tpdv)
+        self.running_mean = nn.Parameter(torch.zeros(input_shape), requires_grad=False).to(**self.tpdv)
+        self.running_mean_sq = nn.Parameter(torch.zeros(input_shape), requires_grad=False).to(**self.tpdv)
+        self.debiasing_term = nn.Parameter(torch.tensor(0.0), requires_grad=False).to(**self.tpdv)
 
-        self.running_mean = nn.Parameter(torch.zeros(input_shape), requires_grad=False)
-        self.running_mean_sq = nn.Parameter(
-            torch.zeros(input_shape), requires_grad=False
-        )
-        self.debiasing_term = nn.Parameter(torch.tensor(0.0), requires_grad=False)
+        # self.running_mean = nn.Parameter(torch.zeros(input_shape), requires_grad=False)
+        # self.running_mean_sq = nn.Parameter(
+        #     torch.zeros(input_shape), requires_grad=False
+        # )
+        # self.debiasing_term = nn.Parameter(torch.tensor(0.0), requires_grad=False)
 
         self.reset_parameters()
 
@@ -47,7 +47,7 @@ class ValueNorm(nn.Module):
             min=self.epsilon
         )
         debiased_var = (debiased_mean_sq - debiased_mean**2).clamp(min=1e-2)
-        return debiased_mean.to(**self.tpdv), debiased_var.to(**self.tpdv)  # TODO
+        return debiased_mean, debiased_var  # TODO
 
     @torch.no_grad()
     def update(self, input_vector):
@@ -64,7 +64,8 @@ class ValueNorm(nn.Module):
         else:
             weight = self.beta
 
-        batch_mean = batch_mean.to(**self.tpdv)  # TODO
+        batch_mean = batch_mean.to(**self.tpdv) 
+        batch_sq_mean = batch_sq_mean.to(**self.tpdv) 
 
         self.running_mean.mul_(weight).add_(batch_mean * (1.0 - weight))
         self.running_mean_sq.mul_(weight).add_(batch_sq_mean * (1.0 - weight))

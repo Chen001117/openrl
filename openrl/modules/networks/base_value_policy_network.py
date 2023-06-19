@@ -21,10 +21,12 @@ import torch.nn as nn
 
 from openrl.modules.utils.valuenorm import ValueNorm
 
-
 class BaseValuePolicyNetwork(ABC, nn.Module):
     def __init__(self, cfg, device):
-        super(BaseValuePolicyNetwork, self).__init__()
+
+        ABC.__init__(self)
+        nn.Module.__init__(self)
+        
         self.device = device
         self._use_valuenorm = cfg.use_valuenorm
 

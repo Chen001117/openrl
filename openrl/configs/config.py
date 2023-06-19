@@ -1134,5 +1134,22 @@ def create_config_parser():
         type=float,
         help="newest_weight",
     )
-
+    parser.add_argument(
+        "--local_rank",
+        default=-1,
+        type=int,
+        help="local rank used in deepspeed",
+    )
+    parser.add_argument(
+        "--disable_drop_out",
+        default=False,
+        type=bool,
+        help="whether to disable dropout",
+    )
+    parser.add_argument(
+        "--use_deepspeed",
+        default=False,
+        type=bool,
+        help="whether to use deepspeed",
+    )
     return parser

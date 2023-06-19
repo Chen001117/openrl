@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Dict, Union
 
 import torch
+from torch import nn
+
 from gym import spaces
 
 from openrl.modules.base_module import BaseModule
@@ -70,18 +72,86 @@ class RLModule(BaseModule):
             if self.program_type == "actor":
                 continue
 
-            optimizer = torch.optim.Adam(
-                model.parameters(),
-                lr=model_cg["lr"],
-                eps=cfg.opti_eps,
-                weight_decay=cfg.weight_decay,
-            )
-            self.optimizers.update({model_key: optimizer})
+            if cfg.use_deepspeed:
+                import deepspeed
+                from deepspeed.ops.adam import FusedAdam
+                from deepspeed.ops.adam import DeepSpeedCPUAdam
+                from transformers import get_scheduler
+                from openrl.modules.utils.util import get_ds_config, get_optimizer_grouped_parameters
+                
+                # DS Config
+                ds_config = get_ds_config(offload=True)
+                # env_num = 5
+                # card_num = 2
+                # batch_size = cfg.episode_length * env_num
+                # micro_batch_size = batch_size / card_num / cfg.num_mini_batch
+                ds_config['train_micro_batch_size_per_gpu'] = 32
+                ds_config['train_batch_size'] = 64
 
-            if cfg.use_amp:
-                self.scaler = torch.cuda.amp.GradScaler()
+                # Optimizer
+                optim_params = get_optimizer_grouped_parameters(model.policy_model, 1e-6)
+                optim = DeepSpeedCPUAdam(
+                    optim_params,
+                    lr=cfg.lr,
+                    betas=(0.9, 0.95)
+                )
+
+                # LR Scheduler
+                num_training_steps = cfg.num_env_steps / \
+                    cfg.episode_length * cfg.num_mini_batch * cfg.ppo_epoch
+                lr_scheduler = get_scheduler(
+                    name="cosine",
+                    optimizer=optim,
+                    num_warmup_steps=0,
+                    num_training_steps=num_training_steps,
+                )
+
+                # DeepSpeed Engine
+                self.actor_engine, *_ = deepspeed.initialize(
+                    model=model.policy_model,
+                    optimizer=optim,
+                    lr_scheduler=lr_scheduler,
+                    config=ds_config
+                )
+
+                # Optimizer
+                critic = nn.Sequential(model.value_model, model.value_head)
+                optim_params = get_optimizer_grouped_parameters(critic, 1e-6)
+                optim = DeepSpeedCPUAdam(
+                    optim_params,
+                    lr=cfg.critic_lr,
+                    betas=(0.9, 0.95)
+                )
+
+                # LR Scheduler
+                lr_scheduler = get_scheduler(
+                    name="cosine",
+                    optimizer=optim,
+                    num_warmup_steps=0,
+                    num_training_steps=num_training_steps,
+                )
+
+                # DeepSpeed Engine
+                self.critic_engine, *_ = deepspeed.initialize(
+                    model=critic,
+                    optimizer=optim,
+                    lr_scheduler=lr_scheduler,
+                    config=ds_config
+                )
+                        
             else:
-                self.scaler = None
+                optimizer = torch.optim.Adam(
+                    model.parameters(),
+                    lr=model_cg["lr"],
+                    eps=cfg.opti_eps,
+                    weight_decay=cfg.weight_decay,
+                )
+                self.optimizers.update({model_key: optimizer})
+
+                if cfg.use_amp:
+                    self.scaler = torch.cuda.amp.GradScaler()
+                else:
+                    self.scaler = None
 
     @abstractmethod
     def get_actions(self):

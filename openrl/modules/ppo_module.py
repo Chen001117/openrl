@@ -87,7 +87,8 @@ class PPOModule(RLModule):
 
     def lr_decay(self, episode, episodes):
         if self.share_model:
-            update_linear_schedule(self.optimizers["model"], episode, episodes, self.lr)
+            pass
+            # update_linear_schedule(self.optimizers["model"], episode, episodes, self.lr)
         else:
             update_linear_schedule(
                 self.optimizers["policy"], episode, episodes, self.lr

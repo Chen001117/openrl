@@ -42,8 +42,6 @@ class PPOAlgorithm(BaseAlgorithm):
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
 
     def ppo_update(self, sample, turn_on=True):
-        for optimizer in self.algo_module.optimizers.values():
-            optimizer.zero_grad()
 
         (
             critic_obs_batch,
@@ -107,8 +105,10 @@ class PPOAlgorithm(BaseAlgorithm):
                 active_masks_batch,
                 turn_on,
             )
-            for loss in loss_list:
-                loss.backward()
+            actor_loss = loss_list[0]
+            critic_loss = loss_list[1]
+            self.algo_module.actor_engine.backward(actor_loss)
+            self.algo_module.critic_engine.backward(critic_loss)
 
         # else:
         if self._use_share_model:
@@ -140,8 +140,8 @@ class PPOAlgorithm(BaseAlgorithm):
 
             self.algo_module.scaler.update()
         else:
-            for optimizer in self.algo_module.optimizers.values():
-                optimizer.step()
+            self.algo_module.actor_engine.step()
+            self.algo_module.critic_engine.step()
 
         if self.world_size > 1:
             torch.cuda.synchronize()

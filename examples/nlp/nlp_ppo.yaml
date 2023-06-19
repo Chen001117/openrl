@@ -11,11 +11,12 @@ ppo_epoch: 5
 episode_length: 128
 num_mini_batch: 20
 use_share_model: true
-use_amp: true
 hidden_size: 1
 data_chunk_length: 1
+use_deepspeed: true
+disable_drop_out: true
 
-model_path: rajkumarrrk/gpt2-fine-tuned-on-daily-dialog
+model_path: 'rajkumarrrk/gpt2-fine-tuned-on-daily-dialog'
 env:
   args: {
     'tokenizer_path': 'gpt2',
