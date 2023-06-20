@@ -38,7 +38,9 @@ class PolicyValueNetworkNLP(GPTCausalLM):
         self.use_half = use_half
         self._disable_drop_out = cfg.disable_drop_out
         self._use_valuenorm = cfg.use_valuenorm
+        self.device = device
         self.tpdv = dict(dtype=torch.float32, device=device)
+        self.use_deepspeed = cfg.use_deepspeed
         
         super(PolicyValueNetworkNLP, self).__init__(
             input_space, action_space, cfg.model_path
@@ -49,6 +51,7 @@ class PolicyValueNetworkNLP(GPTCausalLM):
             self.value_normalizer = ValueNorm(1, device=device)
         else:
             self.value_normalizer = None
+
 
     def forward(self, forward_type, *args, **kwargs):
         if forward_type == "original":
@@ -61,9 +64,12 @@ class PolicyValueNetworkNLP(GPTCausalLM):
             raise NotImplementedError
         
     def set_engine(self, actor_engine, critic_engine, critic, *args, **kwargs):
-        self.actor_engine = actor_engine
-        self.critic_engine = critic_engine
-        self.critic = critic
+        if actor_engine:
+            self.actor_engine = actor_engine
+        if critic_engine:
+            self.critic_engine = critic_engine
+        if critic:
+            self.critic = critic
 
     def get_actor_para(self):
         return self.policy_model.parameters()

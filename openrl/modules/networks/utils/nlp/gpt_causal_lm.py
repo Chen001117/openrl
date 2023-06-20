@@ -52,5 +52,10 @@ class GPTCausalLM(CausalLM):
             model_name, config=config
         )
 
+        if not self.use_deepspeed:
+            self.policy_model.to(self.device)
+            self.value_model.to(self.device)
+            self.value_head.to(self.device)
+
         self.load_from_dict(state_dict)
 

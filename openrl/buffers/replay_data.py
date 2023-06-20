@@ -1079,7 +1079,6 @@ class ReplayData(object):
             rand[i * mini_batch_size : (i + 1) * mini_batch_size]
             for i in range(num_mini_batch)
         ]
-
         if self._mixed_obs:
             critic_obs = {}
             policy_obs = {}

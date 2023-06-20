@@ -39,6 +39,7 @@ class PPOAlgorithm(BaseAlgorithm):
     ) -> None:
         self._use_share_model = cfg.use_share_model
         self.use_joint_action_loss = cfg.use_joint_action_loss
+        self.use_deepspeed = cfg.use_deepspeed
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
 
     def ppo_update(self, sample, turn_on=True):
@@ -105,10 +106,15 @@ class PPOAlgorithm(BaseAlgorithm):
                 active_masks_batch,
                 turn_on,
             )
-            actor_loss = loss_list[0]
-            critic_loss = loss_list[1]
-            self.algo_module.actor_engine.backward(actor_loss)
-            self.algo_module.critic_engine.backward(critic_loss)
+            
+            if self.use_deepspeed:
+                actor_loss = loss_list[0]
+                critic_loss = loss_list[1]
+                self.algo_module.actor_engine.backward(actor_loss)
+                self.algo_module.critic_engine.backward(critic_loss)
+            else:
+                loss_list[0].backward()
+                loss_list[1].backward()
 
         # else:
         if self._use_share_model:
@@ -139,7 +145,7 @@ class PPOAlgorithm(BaseAlgorithm):
                 self.algo_module.scaler.step(optimizer)
 
             self.algo_module.scaler.update()
-        else:
+        elif self.use_deepspeed:
             self.algo_module.actor_engine.step()
             self.algo_module.critic_engine.step()
 
@@ -277,7 +283,6 @@ class PPOAlgorithm(BaseAlgorithm):
             ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
         else:
             ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
-
         if self.dual_clip_ppo:
             ratio = torch.min(ratio, self.dual_clip_coeff)
 
@@ -358,6 +363,7 @@ class PPOAlgorithm(BaseAlgorithm):
         return data_generator
 
     def train(self, buffer, turn_on=True):
+
         if self._use_popart or self._use_valuenorm:
             if self._use_share_model:
                 value_normalizer = self.algo_module.models["model"].value_normalizer
@@ -397,7 +403,6 @@ class PPOAlgorithm(BaseAlgorithm):
 
         for _ in range(self.ppo_epoch):
             data_generator = self.get_data_generator(buffer, advantages)
-
             for sample in data_generator:
                 (
                     value_loss,

@@ -8,12 +8,12 @@ use_recurrent_policy: true
 use_adv_normalize: true
 wandb_entity: "openrl-lab"
 ppo_epoch: 5
-episode_length: 128
-num_mini_batch: 10
+episode_length: 32
+num_mini_batch: 1
 use_share_model: true
 hidden_size: 1
 data_chunk_length: 1
-use_deepspeed: true
+use_deepspeed: false
 disable_drop_out: true
 
 model_path: 'rajkumarrrk/gpt2-fine-tuned-on-daily-dialog'
@@ -22,12 +22,12 @@ env:
     'tokenizer_path': 'gpt2',
     'data_path': 'daily_dialog',
   }
-vec_info_class:
-  id: "NLPVecInfo"
-reward_class: 
-  id: "NLPReward"
-  args: { 
-    "intent_model": "rajkumarrrk/roberta-daily-dialog-intent-classifier",
-    "ref_model": "rajkumarrrk/gpt2-fine-tuned-on-daily-dialog",
-  }
+# vec_info_class:
+#   id: "NLPVecInfo"
+# reward_class: 
+#   id: "NLPReward"
+#   args: { 
+#     "intent_model": "rajkumarrrk/roberta-daily-dialog-intent-classifier",
+#     "ref_model": "rajkumarrrk/gpt2-fine-tuned-on-daily-dialog",
+#   }
     

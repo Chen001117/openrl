@@ -28,6 +28,7 @@ def mse_loss(e):
 
 
 def get_ds_config(offload,
+                  use_fp16=True,
                   stage=2,
                   enable_hybrid_engine=False,
                   inference_tp_size=1,
@@ -50,15 +51,12 @@ def get_ds_config(offload,
         "stage3_prefetch_bucket_size": 3e7,
         "memory_efficient_linear": False
     }
-    return {
+
+    ds_dict = {
         "train_batch_size": -1,
         "train_micro_batch_size_per_gpu": -1,
         "steps_per_print": 10,
         "zero_optimization": zero_opt_dict,
-        "fp16": {
-            "enabled": True,
-            "loss_scale_window": 100
-        },
         "gradient_clipping": 1.0,
         "prescale_gradients": False,
         "wall_clock_breakdown": False,
@@ -71,6 +69,16 @@ def get_ds_config(offload,
             "tp_gather_partition_size": tp_gather_partition_size,
         }
     }
+
+    if use_fp16:
+        ds_dict.update({
+            "fp16": {
+                "enabled": True,
+                "loss_scale_window": 100
+            }
+        })
+
+    return ds_dict
 
 def get_optimizer_grouped_parameters(model,
                                      weight_decay,

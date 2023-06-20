@@ -36,11 +36,27 @@ class Critic(nn.Module):
         self.value_head = value_head
     
     def forward(self, output_hidden_states=True, **kwargs):
-        x = self.value_model(output_hidden_states=output_hidden_states, **kwargs)
-        x = x.hidden_states[-1][:, -1, :]
-        x = self.value_head.forward(x)
-        return x
+        output = self.value_model(output_hidden_states=output_hidden_states, **kwargs)
+        x = output.hidden_states[-1][:, -1, :]
+        v = self.value_head.forward(x)
+        return v, output
     
+    def _update_model_kwargs_for_generation(
+            self, 
+            output,
+            past_model_kwargs,
+            is_encoder_decoder
+        ):
+        unwrap_model(self.value_model)._update_model_kwargs_for_generation(
+            output,
+            past_model_kwargs,
+            is_encoder_decoder
+        )
+
+    @property
+    def config(self):
+        return unwrap_model(self.value_model).config
+
     def prepare_inputs_for_generation(self, input_ids, **kwargs):
         return unwrap_model(self.value_model).prepare_inputs_for_generation(input_ids, **kwargs)
 
@@ -96,12 +112,12 @@ class RLModule(BaseModule):
                 from openrl.modules.utils.util import get_ds_config, get_optimizer_grouped_parameters
                 
                 # DS Config
-                actor_ds_config = get_ds_config(offload=True)
-                actor_ds_config['train_micro_batch_size_per_gpu'] = 32
-                actor_ds_config['train_batch_size'] = 64
+                actor_ds_config = get_ds_config(offload=True, use_fp16=False)
+                actor_ds_config['train_micro_batch_size_per_gpu'] = 16
+                actor_ds_config['train_batch_size'] = 32
 
                 # Optimizer
-                actor_optim_params = get_optimizer_grouped_parameters(model.policy_model, 1e-6)
+                actor_optim_params = get_optimizer_grouped_parameters(model.policy_model, 1e-1)
                 actor_optim = DeepSpeedCPUAdam(
                     actor_optim_params,
                     lr=cfg.lr,
@@ -127,12 +143,12 @@ class RLModule(BaseModule):
                 )
 
                 critic_ds_config = get_ds_config(offload=True)
-                critic_ds_config['train_micro_batch_size_per_gpu'] = 32
-                critic_ds_config['train_batch_size'] = 64
+                critic_ds_config['train_micro_batch_size_per_gpu'] = 16
+                critic_ds_config['train_batch_size'] = 32
 
                 # Optimizer
                 critic = Critic(model.value_model, model.value_head)
-                critic_optim_params = get_optimizer_grouped_parameters(critic, 1e-6)
+                critic_optim_params = get_optimizer_grouped_parameters(critic, 1e-1)
                 critic_optim = DeepSpeedCPUAdam(
                     critic_optim_params,
                     lr=cfg.critic_lr,
@@ -158,6 +174,8 @@ class RLModule(BaseModule):
                 model.set_engine(self.actor_engine, self.critic_engine, critic)
                         
             else:
+                critic = Critic(model.value_model, model.value_head)
+                model.set_engine(None, None, critic)
                 optimizer = torch.optim.Adam(
                     model.parameters(),
                     lr=model_cg["lr"],

@@ -78,8 +78,8 @@ class KLPenalty(nn.Module):
         import deepspeed
 
         ds_config = get_train_ds_config(offload=True)
-        ds_config['train_micro_batch_size_per_gpu'] = 32
-        ds_config['train_batch_size'] = 64
+        ds_config['train_micro_batch_size_per_gpu'] = 16
+        ds_config['train_batch_size'] = 32
 
         # DeepSpeed Engine
         self.ref_engine, *_ = deepspeed.initialize(

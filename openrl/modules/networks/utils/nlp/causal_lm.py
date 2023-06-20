@@ -44,6 +44,8 @@ class CausalLM(nn.Module):
         self._generation_kwargs = generation_kwargs
         self._prompt_truncation_side = prompt_truncation_side
 
+        self.vec = None
+
     def _prepare_inputs_for_model(
         self,
         model: nn.Module,
@@ -53,6 +55,10 @@ class CausalLM(nn.Module):
         model_inputs = unwrap_model(model).prepare_inputs_for_generation(
             input_ids, **model_kwargs
         )
+        if not self.use_deepspeed:
+            for k, v in model_inputs.items():
+                if v is not None:
+                    model_inputs[k] = v.to(self.device)
         return model_inputs
 
     def load_from_dict(self, state_dict: dict = None):
@@ -69,17 +75,18 @@ class CausalLM(nn.Module):
         past_model_kwargs: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         
-        input_ids = obs["input_encoded_pt"].int()
-        attention_mask = obs["input_attention_mask_pt"]
+        input_ids = obs["input_encoded_pt"].int().clone()
+        attention_mask = obs["input_attention_mask_pt"].clone()
 
         past_model_kwargs = {"attention_mask": attention_mask}
 
         model_inputs = self._prepare_inputs_for_model(
-            self.actor_engine, input_ids, past_model_kwargs
+            self.policy_model, input_ids, past_model_kwargs
         )
 
+        model = self.policy_model if not self.use_deepspeed else self.actor_engine
         # forward pass to transformers
-        output = self.actor_engine(output_hidden_states=False, **model_inputs)
+        output = model(output_hidden_states=True, **model_inputs)
         
         # compute action probs - policy head
         next_token_logits = output.logits[:, -1, :]
@@ -90,6 +97,16 @@ class CausalLM(nn.Module):
         # actions_input = actions.to(next_token_logits.device)
         log_prob = dist.log_prob(actions)
 
+        past_model_kwargs = unwrap_model(
+            self.policy_model
+        )._update_model_kwargs_for_generation(
+            output,
+            past_model_kwargs,
+            is_encoder_decoder=unwrap_model(
+                self.policy_model
+            ).config.is_encoder_decoder,
+        )
+
         return log_prob, entropy
     
     def forward_value(
@@ -98,17 +115,18 @@ class CausalLM(nn.Module):
         past_model_kwargs: Optional[Dict[str, torch.tensor]] = None,
     ) -> torch.Tensor:
         
-        input_ids = obs["input_encoded_pt"].int()
-        attention_mask = obs["input_attention_mask_pt"]
+        input_ids = obs["input_encoded_pt"].int().clone()
+        attention_mask = obs["input_attention_mask_pt"].clone()
 
         past_model_kwargs = {"attention_mask": attention_mask}
 
         model_inputs = self._prepare_inputs_for_model(
-            self.critic_engine, input_ids, past_model_kwargs
+            self.critic, input_ids, past_model_kwargs
         )
 
+        model = self.critic if not self.use_deepspeed else self.critic_engine
         # forward pass to transformers
-        values = self.critic_engine(output_hidden_states=True, **model_inputs)
+        values, output = model(output_hidden_states=True, **model_inputs)
         
         # # pool the hidden states 
         # last_tokens_hidden = output.hidden_states[-1][:, -1, :]
@@ -117,7 +135,7 @@ class CausalLM(nn.Module):
         return values
 
     def evaluate_actions(
-        self, obs: torch.Tensor, actions: torch.Tensor
+        self, obs, actions: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         
         log_probs, entropy = self.forward_policy(obs=obs, actions=actions)
@@ -127,24 +145,26 @@ class CausalLM(nn.Module):
 
     def get_distribution(self, obs, past_model_kwargs=None, detach=False):
 
-        input_ids = obs["input_encoded_pt"].int()
-        attention_mask = obs["input_attention_mask_pt"]
+        input_ids = obs["input_encoded_pt"].int().clone()
+        attention_mask = obs["input_attention_mask_pt"].clone()
 
         past_model_kwargs = {"attention_mask": attention_mask}
 
         if detach:
             with torch.no_grad():
+                model = self.policy_model if not self.use_deepspeed else self.actor_engine
                 model_inputs = self._prepare_inputs_for_model(
-                    self.actor_engine, input_ids, past_model_kwargs
+                    self.policy_model, input_ids, past_model_kwargs
                 )
                 # forward pass to transformers
-                output = self.actor_engine(output_hidden_states=False, **model_inputs)
+                output = model(output_hidden_states=True, **model_inputs)
         else:
+            model = self.policy_model if not self.use_deepspeed else self.actor_engine
             model_inputs = self._prepare_inputs_for_model(
-                self.actor_engine, input_ids, past_model_kwargs
+                self.policy_model, input_ids, past_model_kwargs
             )
             # forward pass to transformers
-            output = self.actor_engine(output_hidden_states=False, **model_inputs)
+            output = model(output_hidden_states=True, **model_inputs)
 
         # compute action probs - policy head
         next_token_logits = output.logits[:, -1, :]
