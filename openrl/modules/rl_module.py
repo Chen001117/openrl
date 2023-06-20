@@ -27,6 +27,22 @@ from gym import spaces
 from openrl.modules.base_module import BaseModule
 from openrl.modules.model_config import ModelTrainConfig
 
+from transformers.modeling_utils import unwrap_model
+
+class Critic(nn.Module):
+    def __init__(self, value_model, value_head):
+        super(Critic, self).__init__()
+        self.value_model = value_model
+        self.value_head = value_head
+    
+    def forward(self, output_hidden_states=True, **kwargs):
+        x = self.value_model(output_hidden_states=output_hidden_states, **kwargs)
+        x = x.hidden_states[-1][:, -1, :]
+        x = self.value_head.forward(x)
+        return x
+    
+    def prepare_inputs_for_generation(self, input_ids, **kwargs):
+        return unwrap_model(self.value_model).prepare_inputs_for_generation(input_ids, **kwargs)
 
 class RLModule(BaseModule):
     def __init__(
@@ -80,18 +96,14 @@ class RLModule(BaseModule):
                 from openrl.modules.utils.util import get_ds_config, get_optimizer_grouped_parameters
                 
                 # DS Config
-                ds_config = get_ds_config(offload=True)
-                # env_num = 5
-                # card_num = 2
-                # batch_size = cfg.episode_length * env_num
-                # micro_batch_size = batch_size / card_num / cfg.num_mini_batch
-                ds_config['train_micro_batch_size_per_gpu'] = 32
-                ds_config['train_batch_size'] = 64
+                actor_ds_config = get_ds_config(offload=True)
+                actor_ds_config['train_micro_batch_size_per_gpu'] = 32
+                actor_ds_config['train_batch_size'] = 64
 
                 # Optimizer
-                optim_params = get_optimizer_grouped_parameters(model.policy_model, 1e-6)
-                optim = DeepSpeedCPUAdam(
-                    optim_params,
+                actor_optim_params = get_optimizer_grouped_parameters(model.policy_model, 1e-6)
+                actor_optim = DeepSpeedCPUAdam(
+                    actor_optim_params,
                     lr=cfg.lr,
                     betas=(0.9, 0.95)
                 )
@@ -99,9 +111,9 @@ class RLModule(BaseModule):
                 # LR Scheduler
                 num_training_steps = cfg.num_env_steps / \
                     cfg.episode_length * cfg.num_mini_batch * cfg.ppo_epoch
-                lr_scheduler = get_scheduler(
-                    name="cosine",
-                    optimizer=optim,
+                actor_lr_scheduler = get_scheduler(
+                    name="constant",
+                    optimizer=actor_optim,
                     num_warmup_steps=0,
                     num_training_steps=num_training_steps,
                 )
@@ -109,24 +121,28 @@ class RLModule(BaseModule):
                 # DeepSpeed Engine
                 self.actor_engine, *_ = deepspeed.initialize(
                     model=model.policy_model,
-                    optimizer=optim,
-                    lr_scheduler=lr_scheduler,
-                    config=ds_config
+                    optimizer=actor_optim,
+                    lr_scheduler=actor_lr_scheduler,
+                    config=actor_ds_config
                 )
 
+                critic_ds_config = get_ds_config(offload=True)
+                critic_ds_config['train_micro_batch_size_per_gpu'] = 32
+                critic_ds_config['train_batch_size'] = 64
+
                 # Optimizer
-                critic = nn.Sequential(model.value_model, model.value_head)
-                optim_params = get_optimizer_grouped_parameters(critic, 1e-6)
-                optim = DeepSpeedCPUAdam(
-                    optim_params,
+                critic = Critic(model.value_model, model.value_head)
+                critic_optim_params = get_optimizer_grouped_parameters(critic, 1e-6)
+                critic_optim = DeepSpeedCPUAdam(
+                    critic_optim_params,
                     lr=cfg.critic_lr,
                     betas=(0.9, 0.95)
                 )
 
                 # LR Scheduler
-                lr_scheduler = get_scheduler(
-                    name="cosine",
-                    optimizer=optim,
+                critic_lr_scheduler = get_scheduler(
+                    name="constant",
+                    optimizer=critic_optim,
                     num_warmup_steps=0,
                     num_training_steps=num_training_steps,
                 )
@@ -134,10 +150,12 @@ class RLModule(BaseModule):
                 # DeepSpeed Engine
                 self.critic_engine, *_ = deepspeed.initialize(
                     model=critic,
-                    optimizer=optim,
-                    lr_scheduler=lr_scheduler,
-                    config=ds_config
+                    optimizer=critic_optim,
+                    lr_scheduler=critic_lr_scheduler,
+                    config=critic_ds_config
                 )
+
+                model.set_engine(self.actor_engine, self.critic_engine, critic)
                         
             else:
                 optimizer = torch.optim.Adam(

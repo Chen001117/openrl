@@ -4,12 +4,12 @@ critic_lr: 1e-6
 run_dir: ./run_results/
 log_interval: 1
 use_recurrent_policy: true
-use_valuenorm: true
+# use_valuenorm: true
 use_adv_normalize: true
 wandb_entity: "openrl-lab"
 ppo_epoch: 5
 episode_length: 128
-num_mini_batch: 20
+num_mini_batch: 10
 use_share_model: true
 hidden_size: 1
 data_chunk_length: 1

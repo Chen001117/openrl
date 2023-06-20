@@ -24,6 +24,8 @@ from openrl.modules.utils.valuenorm import ValueNorm
 
 from openrl.utils.util import check_v2 as check
 
+from openrl.modules.utils.util import get_optimizer_grouped_parameters
+
 class PolicyValueNetworkNLP(GPTCausalLM):
     def __init__(
         self,
@@ -57,12 +59,17 @@ class PolicyValueNetworkNLP(GPTCausalLM):
             return self.get_values(*args, **kwargs)
         else:
             raise NotImplementedError
+        
+    def set_engine(self, actor_engine, critic_engine, critic, *args, **kwargs):
+        self.actor_engine = actor_engine
+        self.critic_engine = critic_engine
+        self.critic = critic
 
     def get_actor_para(self):
         return self.policy_model.parameters()
 
     def get_critic_para(self):
-        return self.value_model.parameters()
+        return self.critic.parameters()
 
     def get_actions(
         self, obs, rnn_states, masks, available_actions=None, deterministic=False

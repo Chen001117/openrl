@@ -75,11 +75,11 @@ class CausalLM(nn.Module):
         past_model_kwargs = {"attention_mask": attention_mask}
 
         model_inputs = self._prepare_inputs_for_model(
-            self.policy_model, input_ids, past_model_kwargs
+            self.actor_engine, input_ids, past_model_kwargs
         )
 
         # forward pass to transformers
-        output = self.policy_model(output_hidden_states=False, **model_inputs)
+        output = self.actor_engine(output_hidden_states=False, **model_inputs)
         
         # compute action probs - policy head
         next_token_logits = output.logits[:, -1, :]
@@ -104,15 +104,15 @@ class CausalLM(nn.Module):
         past_model_kwargs = {"attention_mask": attention_mask}
 
         model_inputs = self._prepare_inputs_for_model(
-            self.value_model, input_ids, past_model_kwargs
+            self.critic_engine, input_ids, past_model_kwargs
         )
 
         # forward pass to transformers
-        output = self.value_model(output_hidden_states=True, **model_inputs)
+        values = self.critic_engine(output_hidden_states=True, **model_inputs)
         
-        # pool the hidden states 
-        last_tokens_hidden = output.hidden_states[-1][:, -1, :]
-        values = self.value_head.forward(last_tokens_hidden)
+        # # pool the hidden states 
+        # last_tokens_hidden = output.hidden_states[-1][:, -1, :]
+        # values = self.value_head.forward(last_tokens_hidden)
 
         return values
 
@@ -135,16 +135,16 @@ class CausalLM(nn.Module):
         if detach:
             with torch.no_grad():
                 model_inputs = self._prepare_inputs_for_model(
-                    self.policy_model, input_ids, past_model_kwargs
+                    self.actor_engine, input_ids, past_model_kwargs
                 )
                 # forward pass to transformers
-                output = self.policy_model(output_hidden_states=False, **model_inputs)
+                output = self.actor_engine(output_hidden_states=False, **model_inputs)
         else:
             model_inputs = self._prepare_inputs_for_model(
-                self.policy_model, input_ids, past_model_kwargs
+                self.actor_engine, input_ids, past_model_kwargs
             )
             # forward pass to transformers
-            output = self.policy_model(output_hidden_states=False, **model_inputs)
+            output = self.actor_engine(output_hidden_states=False, **model_inputs)
 
         # compute action probs - policy head
         next_token_logits = output.logits[:, -1, :]

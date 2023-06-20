@@ -49,7 +49,7 @@ class Intent:
 
         ds_config = get_train_ds_config(offload=True)
         ds_config['train_micro_batch_size_per_gpu'] = 64
-        ds_config['train_batch_size'] = 1280
+        ds_config['train_batch_size'] = 128
         self.rew_engine, *_ = deepspeed.initialize(model=self._model, config=ds_config)
 
         # if torch.cuda.is_available():
