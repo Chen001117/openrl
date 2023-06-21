@@ -64,6 +64,7 @@ class BaseAlgorithm(ABC):
         self.dec_actor = cfg.dec_actor
 
         self.use_amp = cfg.use_amp
+        self.use_deepspeed = cfg.use_deepspeed
 
         self.dual_clip_ppo = cfg.dual_clip_ppo
         self.dual_clip_coeff = torch.tensor(cfg.dual_clip_coeff).to(self.device)

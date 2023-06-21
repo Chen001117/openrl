@@ -9,6 +9,22 @@ from transformers.modeling_utils import unwrap_model
 
 from openrl.envs.nlp.utils.distribution import CategoricalDistribution
 
+def get_ds_config(offload, stage=0):
+
+    device = "cpu" if offload else "none"
+    zero_opt_dict = {
+        "stage": stage,
+        "offload_param": {
+            "device": device
+        },
+        "memory_efficient_linear": False
+    }
+    return {
+        "train_batch_size": -1,
+        "train_micro_batch_size_per_gpu": -1,
+        "steps_per_print": 10,
+        "zero_optimization": zero_opt_dict,
+    }
 
 class KLPenalty(nn.Module):
     def __init__(
@@ -16,18 +32,29 @@ class KLPenalty(nn.Module):
         action_space: gym.Space,
         ref_model: str,
         apply_model_parallel: bool = True,
+        use_deepspeed: bool = False,
     ):
         super().__init__()
 
         # reference model
+        self.use_deepspeed = use_deepspeed
         self._apply_model_parallel = apply_model_parallel
         self._ref_net = AutoModelForCausalLM.from_pretrained(ref_model)
         self._ref_net = self._ref_net.eval()
-        if torch.cuda.is_available():
-            if self._apply_model_parallel and self._ref_net.is_parallelizable:
-                self._ref_net.parallelize()
-            else:  # else defaults to data parallel
-                self._ref_net = torch.nn.DataParallel(self._ref_net)
+
+
+        if self.use_deepspeed:
+            import deepspeed
+            ds_config = get_ds_config(offload=True)
+            ds_config['train_micro_batch_size_per_gpu'] = 16
+            ds_config['train_batch_size'] = 32
+            self.rew_engine, *_ = deepspeed.initialize(model=self._ref_net, config=ds_config)
+        else:
+            if torch.cuda.is_available():
+                if self._apply_model_parallel and self._ref_net.is_parallelizable:
+                    self._ref_net.parallelize()
+                else:  # else defaults to data parallel
+                    self._ref_net = torch.nn.DataParallel(self._ref_net)
 
         # alpha adjustment
         self._alpha = 0.2
@@ -66,6 +93,11 @@ class KLPenalty(nn.Module):
             self._ref_net, input_ids, past_model_kwargs
         )
 
+        if self.use_deepspeed:
+            for k, v in model_inputs.items():
+                if v is not None:
+                    model_inputs[k] = v.to(self.rew_engine.device)
+
         with torch.no_grad():
             output = self._ref_net(output_hidden_states=True, **model_inputs)
             output["past_key_values"] = None
@@ -97,7 +129,7 @@ class KLPenalty(nn.Module):
             input_ids, **model_kwargs
         )
 
-        if self._apply_model_parallel and unwrap_model(model).is_parallelizable:
+        if self._apply_model_parallel and unwrap_model(model).is_parallelizable and not self.use_deepspeed:
             # if model is in parallel mode, move the tensors to the first device
             model_inputs = {
                 key: (

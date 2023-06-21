@@ -33,6 +33,7 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
         use_half=False,
         disable_drop_out: bool = True,
     ):
+        self.use_deepspeed = cfg.use_deepspeed
         self.disable_drop_out = disable_drop_out
         self._use_valuenorm = cfg.use_valuenorm
         super(CausalLMActorCriticPolicy, self).__init__(
@@ -100,14 +101,3 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
         values = value_output.values
 
         return values, rnn_states
-
-    def get_log_probs_ref_model(self, obs, action):
-        for key in obs.keys():
-            obs[key] = check(obs[key], self.use_half, self.tpdv)
-        action = check(action, self.use_half, self.tpdv)
-        action = action.squeeze(-1)
-
-        policy_output = super().get_log_probs_ref_model(obs, action)
-        action_log_probs = policy_output.log_probs
-
-        return action_log_probs.detach().cpu().numpy()

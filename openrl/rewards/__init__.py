@@ -10,11 +10,11 @@ registed_rewards = {
 
 class RewardFactory:
     @staticmethod
-    def get_reward_class(reward_class: Any, env: BaseVecEnv):
+    def get_reward_class(reward_class: Any, env: BaseVecEnv, cfg: Any):
         RewardFactory.auto_register(reward_class)
         if reward_class is None or reward_class.id is None:
             return registed_rewards["default"]()
-        return registed_rewards[reward_class.id](env, **reward_class.args)
+        return registed_rewards[reward_class.id](env, cfg, **reward_class.args)
 
     @staticmethod
     def register(reward_name, reward_class):

@@ -103,7 +103,7 @@ def make(
         env = SyncVectorEnv(env_fns, render_mode=render_mode)
 
     reward_class = cfg.reward_class if cfg else None
-    reward_class = RewardFactory.get_reward_class(reward_class, env)
+    reward_class = RewardFactory.get_reward_class(reward_class, env, cfg)
 
     env = RewardWrapper(env, reward_class)
 

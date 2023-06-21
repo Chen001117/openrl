@@ -107,8 +107,12 @@ class PPOAlgorithm(BaseAlgorithm):
                 active_masks_batch,
                 turn_on,
             )
-            for loss in loss_list:
-                loss.backward()
+            if self.use_deepspeed:
+                self.algo_module.models["model"].actor_engine.backward(loss_list[0])
+                self.algo_module.models["model"].critic_engine.backward(loss_list[1])
+            else:
+                for loss in loss_list:
+                    loss.backward()
 
         # else:
         if self._use_share_model:
@@ -139,6 +143,9 @@ class PPOAlgorithm(BaseAlgorithm):
                 self.algo_module.scaler.step(optimizer)
 
             self.algo_module.scaler.update()
+        elif self.use_deepspeed:
+            self.algo_module.models["model"].actor_engine.step()
+            self.algo_module.models["model"].critic_engine.zero_grad()
         else:
             for optimizer in self.algo_module.optimizers.values():
                 optimizer.step()

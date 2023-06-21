@@ -10,7 +10,7 @@ from openrl.rewards.base_reward import BaseReward
 
 
 class NLPReward(BaseReward):
-    def __init__(self, env: Env, ref_model: str, intent_model: str):
+    def __init__(self, env: Env, cfg: Any, ref_model: str, intent_model: str):
         self.rew_infos = []
         self.env_infos = []
 
@@ -24,6 +24,7 @@ class NLPReward(BaseReward):
         kl_config = {
             "action_space": env.action_space,
             "ref_model": ref_model,
+            "use_deepspeed": cfg.use_deepspeed,
         }
         self.step_rew_funcs = {
             "kl_pen": KLPenalty(**kl_config),
@@ -32,9 +33,10 @@ class NLPReward(BaseReward):
         intent_config = {
             "intent_model": intent_model,
             "intent_coeff": 0.5,
+            "use_deepspeed": cfg.use_deepspeed,
         }
         self.batch_rew_funcs = {
-            "intent_acc": Intent(**intent_config),
+            # "intent_acc": Intent(**intent_config),
         }
 
     def step_reward(
@@ -68,35 +70,34 @@ class NLPReward(BaseReward):
         Args:
             buffer (): buffer.data.rewards is updated here
         """
-
-        # collect batch data
-        done_idx = []
-        data = {"prompt_texts": [], "generated_texts": [], "meta_infos": []}
-
-        for step_infos in self.env_infos:
-            for env_info in step_infos:
-                done = "final_info" in env_info
-                done_idx.append(done)
-                if done:
-                    data["prompt_texts"].append(env_info["final_info"]["prompt_texts"])
-                    data["generated_texts"].append(
-                        env_info["final_info"]["generated_texts"]
-                    )
-                    data["meta_infos"].append(env_info["final_info"]["meta_infos"])
-        done_idx = np.array(done_idx)
-
-        # get batch reward
         infos = dict()
-        rewards = np.zeros_like(buffer.data.rewards).flatten()
-        for rew_func in self.batch_rew_funcs.values():
-            new_rew, new_info = rew_func(data)
-            if len(infos) == 0:
-                infos = new_info
-            else:
-                infos.update(new_info)
-            rewards[done_idx] += new_rew
-        rewards = rewards.reshape(buffer.data.rewards.shape)
-        buffer.data.rewards += rewards
+
+        # # get batch reward
+        # done_idx = []
+        # data = {"prompt_texts": [], "generated_texts": [], "meta_infos": []}
+
+        # for step_infos in self.env_infos:
+        #     for env_info in step_infos:
+        #         done = "final_info" in env_info
+        #         done_idx.append(done)
+        #         if done:
+        #             data["prompt_texts"].append(env_info["final_info"]["prompt_texts"])
+        #             data["generated_texts"].append(
+        #                 env_info["final_info"]["generated_texts"]
+        #             )
+        #             data["meta_infos"].append(env_info["final_info"]["meta_infos"])
+        # done_idx = np.array(done_idx)
+
+        # rewards = np.zeros_like(buffer.data.rewards).flatten()
+        # for rew_func in self.batch_rew_funcs.values():
+        #     new_rew, new_info = rew_func(data)
+        #     if len(infos) == 0:
+        #         infos = new_info
+        #     else:
+        #         infos.update(new_info)
+        #     rewards[done_idx] += new_rew
+        # rewards = rewards.reshape(buffer.data.rewards.shape)
+        # buffer.data.rewards += rewards
 
         # update alpha
         kl = []
