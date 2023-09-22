@@ -15,10 +15,10 @@ from openrl.modules.networks.utils.nlp.base_policy import (
     PolicyType,
     ValueOutput,
 )
-from openrl.modules.networks.utils.nlp.hf_generation_utils import (
-    override_generation_routines,
-    unwrap_generation_routines,
-)
+# from openrl.modules.networks.utils.nlp.hf_generation_utils import (
+#     override_generation_routines,
+#     unwrap_generation_routines,
+# )
 from openrl.modules.utils.valuenorm import ValueNorm
 
 
@@ -65,7 +65,7 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy):
     @property
     def policy(self):
         policy_model = self._policy_model
-        policy_model.__class__ = unwrap_generation_routines(type(policy_model))
+        # policy_model.__class__ = unwrap_generation_routines(type(policy_model))
         return policy_model
 
     def _build_model_heads(self, model_name: str, config: str, device: str):
@@ -81,9 +81,9 @@ class CausalLMActorCriticPolicy(LMActorCriticPolicy):
             model_name, config=config
         )
 
-        self._policy_model.__class__ = override_generation_routines(
-            type(self._policy_model)
-        )
+        # self._policy_model.__class__ = override_generation_routines(
+        #     type(self._policy_model)
+        # )
 
         self._value_model = AutoModelForCausalLM.from_pretrained(
             model_name, config=config

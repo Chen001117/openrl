@@ -1,3 +1,4 @@
 seed: 0
 run_dir: ./run_results/
 wandb_entity: openrl-lab
+use_deepspeed: true

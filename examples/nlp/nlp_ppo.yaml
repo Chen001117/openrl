@@ -11,7 +11,8 @@ ppo_epoch: 5
 episode_length: 128
 num_mini_batch: 20
 use_share_model: true
-use_amp: true
+# use_amp: true
+use_deepspeed: true
 hidden_size: 1
 data_chunk_length: 1
 
@@ -23,10 +24,10 @@ env:
   }
 vec_info_class:
   id: "NLPVecInfo"
-reward_class: 
-  id: "NLPReward"
-  args: { 
-    "intent_model": "rajkumarrrk/roberta-daily-dialog-intent-classifier",
-    "ref_model": "rajkumarrrk/gpt2-fine-tuned-on-daily-dialog",
-  }
+# reward_class: 
+#   id: "NLPReward"
+#   args: { 
+#     "intent_model": "rajkumarrrk/roberta-daily-dialog-intent-classifier",
+#     "ref_model": "rajkumarrrk/gpt2-fine-tuned-on-daily-dialog",
+#   }
     

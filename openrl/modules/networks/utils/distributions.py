@@ -67,8 +67,9 @@ class Categorical(nn.Module):
 
     def forward(self, x, action_masks=None):
         x = self.linear(x)
+        max_num4fp16 = 6e4
         if action_masks is not None:
-            x[action_masks == 0] = -1e10
+            x[action_masks == 0] = -max_num4fp16
         return FixedCategorical(logits=x)
 
 
