@@ -92,13 +92,14 @@ def evaluate_policy(
     # get the train_env, and will set it back after evaluation
     train_env = agent.get_env()
     agent.set_env(env)
-    observations, info = env.reset()
+    observations, infos = env.reset()
     states = None
     episode_starts = np.ones((env.parallel_env_num,), dtype=bool)
 
     while (episode_counts < episode_count_targets).any():
         actions, states = agent.act(
             observations,
+            infos,
             deterministic=deterministic,
         )
         observations, rewards, dones, infos = env.step(actions)

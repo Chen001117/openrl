@@ -149,6 +149,11 @@ def make(
                 render_mode=convert_render_mode,
                 **kwargs,
             )
+        elif id in ["10gen_protoss"]:
+            from openrl.envs.smac.smacv2_env import make_smac_envs
+            env_fns = make_smac_envs(
+                id=id, env_num=env_num, render_mode=convert_render_mode, **kwargs
+            )
         elif (
             id in openrl.envs.pettingzoo_all_envs
             or id in openrl.envs.PettingZoo.registration.pettingzoo_env_dict.keys()

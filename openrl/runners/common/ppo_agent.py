@@ -143,6 +143,7 @@ class PPOAgent(RLAgent):
             action_masks = prepare_action_masks(
                 info, agent_num=self.agent_num, as_batch=True
             )
+            action_masks = action_masks.reshape([-1, action_masks.shape[-1]])
         else:
             action_masks = None
         action, rnn_state = self.net.act(

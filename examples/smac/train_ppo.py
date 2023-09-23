@@ -1,8 +1,8 @@
 """"""
 
 import numpy as np
-from custom_vecinfo import SMACInfo
-from smac_env import make_smac_envs
+from openrl.envs.smac.custom_vecinfo import SMACInfo
+from openrl.envs.smac.smacv2_env import make_smac_envs
 
 from openrl.configs.config import create_config_parser
 from openrl.envs.common import make
@@ -25,11 +25,10 @@ def train():
     # create environment
     env_num = 8
     env = make(
-        "2s_vs_1sc",
+        "10gen_protoss",
         env_num=env_num,
         asynchronous=True,
         cfg=cfg,
-        make_custom_envs=make_smac_envs,
         env_wrappers=env_wrappers,
     )
 
@@ -52,7 +51,7 @@ def train():
 def evaluation(agent):
     env_num = 2
     env = make(
-        "2s_vs_1sc",
+        "10gen_protoss",
         env_num=env_num,
         make_custom_envs=make_smac_envs,
     )
@@ -80,4 +79,4 @@ if __name__ == "__main__":
     FLAGS([""])
 
     agent = train()
-    evaluation(agent)
+    # evaluation(agent)

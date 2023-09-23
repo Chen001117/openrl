@@ -180,7 +180,7 @@ class RLAgent(BaseAgent):
             self._env = env
             self.env_num = env.parallel_env_num
             self.agent_num = env.agent_num
-        env.reset(seed=self._cfg.seed)
+        # env.reset(seed=self._cfg.seed) # TODO
 
         self.net.reset(env)
 
