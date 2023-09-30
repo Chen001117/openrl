@@ -65,6 +65,8 @@ class ReplayData(object):
         self._use_valuenorm = cfg.use_valuenorm
         self._use_proper_time_limits = cfg.use_proper_time_limits
 
+        self._buffer_length = 2
+
         self._mixed_obs = False  # for mixed observation
 
         policy_obs_shape = get_policy_obs_space(obs_space)
@@ -109,7 +111,8 @@ class ReplayData(object):
                 critic_obs_shape = critic_obs_shape[:1]
 
             self.critic_obs = np.zeros(
-                (
+                (   
+                    self._buffer_length,
                     self.episode_length + 1,
                     self.n_rollout_threads,
                     num_agents,
@@ -119,6 +122,7 @@ class ReplayData(object):
             )
             self.policy_obs = np.zeros(
                 (
+                    self._buffer_length,
                     self.episode_length + 1,
                     self.n_rollout_threads,
                     num_agents,
@@ -129,6 +133,7 @@ class ReplayData(object):
 
         self.rnn_states = np.zeros(
             (
+                self._buffer_length,
                 self.episode_length + 1,
                 self.n_rollout_threads,
                 num_agents,
@@ -140,7 +145,7 @@ class ReplayData(object):
         self.rnn_states_critic = np.zeros_like(self.rnn_states)
 
         self.value_preds = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
+            (self._buffer_length, self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
             dtype=np.float32,
         )
         self.returns = np.zeros_like(self.value_preds)
@@ -148,6 +153,7 @@ class ReplayData(object):
         if act_space.__class__.__name__ == "Discrete":
             self.action_masks = np.ones(
                 (
+                    self._buffer_length,
                     self.episode_length + 1,
                     self.n_rollout_threads,
                     num_agents,
@@ -161,21 +167,21 @@ class ReplayData(object):
         act_shape = get_shape_from_act_space(act_space)
 
         self.actions = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+            (self._buffer_length, self.episode_length, self.n_rollout_threads, num_agents, act_shape),
             dtype=np.float32,
         )
         self.action_log_probs = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+            (self._buffer_length, self.episode_length, self.n_rollout_threads, num_agents, act_shape),
             dtype=np.float32,
         )
 
         self.rewards = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, 1),
+            (self._buffer_length, self.episode_length, self.n_rollout_threads, num_agents, 1),
             dtype=np.float32,
         )
 
         self.masks = np.ones(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
+            (self._buffer_length, self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
             dtype=np.float32,
         )
         self.bad_masks = np.ones_like(self.masks)
@@ -196,7 +202,7 @@ class ReplayData(object):
         if isinstance(data, ObsData):
             return data.step_batch(step)
         else:
-            return np.concatenate(data[step])
+            return np.concatenate(data[0,step])
 
     def all_batch_data(self, data_name: str, min=None, max=None):
         assert hasattr(self, data_name)
@@ -214,31 +220,31 @@ class ReplayData(object):
             for key in self.policy_obs.keys():
                 self.policy_obs[key][self.step + 1] = data["policy_obs"][key].copy()
         else:
-            self.critic_obs[self.step + 1] = data["critic_obs"].copy()
-            self.policy_obs[self.step + 1] = data["policy_obs"].copy()
+            self.critic_obs[0, self.step + 1] = data["critic_obs"].copy()
+            self.policy_obs[0, self.step + 1] = data["policy_obs"].copy()
 
         if "rnn_states" in data:
-            self.rnn_states[self.step + 1] = data["rnn_states"].copy()
+            self.rnn_states[0, self.step + 1] = data["rnn_states"].copy()
         if "rnn_states_critic" in data:
-            self.rnn_states_critic[self.step + 1] = data["rnn_states_critic"].copy()
+            self.rnn_states_critic[0, self.step + 1] = data["rnn_states_critic"].copy()
         if "actions" in data:
-            self.actions[self.step] = data["actions"].copy()
+            self.actions[0, self.step] = data["actions"].copy()
         if "action_log_probs" in data:
-            self.action_log_probs[self.step] = data["action_log_probs"].copy()
+            self.action_log_probs[0, self.step] = data["action_log_probs"].copy()
 
         if "value_preds" in data:
-            self.value_preds[self.step] = data["value_preds"].copy()
+            self.value_preds[0, self.step] = data["value_preds"].copy()
         if "rewards" in data:
-            self.rewards[self.step] = data["rewards"].copy()
+            self.rewards[0, self.step] = data["rewards"].copy()
         if "masks" in data:
-            self.masks[self.step + 1] = data["masks"].copy()
+            self.masks[0, self.step + 1] = data["masks"].copy()
 
         if "bad_masks" in data:
-            self.bad_masks[self.step + 1] = data["bad_masks"].copy()
+            self.bad_masks[0, self.step + 1] = data["bad_masks"].copy()
         if "active_masks" in data:
-            self.active_masks[self.step + 1] = data["active_masks"].copy()
+            self.active_masks[0, self.step + 1] = data["active_masks"].copy()
         if "action_masks" in data:
-            self.action_masks[self.step + 1] = data["action_masks"].copy()
+            self.action_masks[0, self.step + 1] = data["action_masks"].copy()
 
         self.step = (self.step + 1) % self.episode_length
 
@@ -264,23 +270,23 @@ class ReplayData(object):
             for key in self.policy_obs.keys():
                 self.policy_obs[key][self.step + 1] = policy_obs[key].copy()
         else:
-            self.critic_obs[self.step + 1] = critic_obs.copy()
-            self.policy_obs[self.step + 1] = policy_obs.copy()
+            self.critic_obs[0, self.step + 1] = critic_obs.copy()
+            self.policy_obs[0, self.step + 1] = policy_obs.copy()
         if rnn_states is not None:
-            self.rnn_states[self.step + 1] = rnn_states.copy()
+            self.rnn_states[0, self.step + 1] = rnn_states.copy()
         if rnn_states_critic is not None:
-            self.rnn_states_critic[self.step + 1] = rnn_states_critic.copy()
-        self.actions[self.step] = actions.copy()
-        self.action_log_probs[self.step] = action_log_probs.copy()
-        self.value_preds[self.step] = value_preds.copy()
-        self.rewards[self.step] = rewards.copy()
-        self.masks[self.step + 1] = masks.copy()
+            self.rnn_states_critic[0, self.step + 1] = rnn_states_critic.copy()
+        self.actions[0, self.step] = actions.copy()
+        self.action_log_probs[0, self.step] = action_log_probs.copy()
+        self.value_preds[0, self.step] = value_preds.copy()
+        self.rewards[0, self.step] = rewards.copy()
+        self.masks[0, self.step + 1] = masks.copy()
         if bad_masks is not None:
-            self.bad_masks[self.step + 1] = bad_masks.copy()
+            self.bad_masks[0, self.step + 1] = bad_masks.copy()
         if active_masks is not None:
-            self.active_masks[self.step + 1] = active_masks.copy()
+            self.active_masks[0, self.step + 1] = active_masks.copy()
         if action_masks is not None:
-            self.action_masks[self.step + 1] = action_masks.copy()
+            self.action_masks[0, self.step + 1] = action_masks.copy()
         self.step = (self.step + 1) % self.episode_length
 
     def init_buffer(self, raw_obs, action_masks=None):
@@ -292,10 +298,10 @@ class ReplayData(object):
             for key in self.policy_obs.keys():
                 self.policy_obs[key][0] = policy_obs[key].copy()
         else:
-            self.critic_obs[0] = critic_obs.copy()
-            self.policy_obs[0] = policy_obs.copy()
+            self.critic_obs[0, 0] = critic_obs.copy()
+            self.policy_obs[0, 0] = policy_obs.copy()
         if action_masks is not None and self.action_masks is not None:
-            self.action_masks[0] = action_masks
+            self.action_masks[0, 0] = action_masks
 
     def after_update(self):
         assert self.step == 0, "step:{} episode:{}".format(
@@ -307,15 +313,32 @@ class ReplayData(object):
             for key in self.policy_obs.keys():
                 self.policy_obs[key][0] = self.policy_obs[key][-1].copy()
         else:
-            self.critic_obs[0] = self.critic_obs[-1].copy()
-            self.policy_obs[0] = self.policy_obs[-1].copy()
-        self.rnn_states[0] = self.rnn_states[-1].copy()
-        self.rnn_states_critic[0] = self.rnn_states_critic[-1].copy()
-        self.masks[0] = self.masks[-1].copy()
-        self.bad_masks[0] = self.bad_masks[-1].copy()
-        self.active_masks[0] = self.active_masks[-1].copy()
+            self.critic_obs[0, 0] = self.critic_obs[0, -1].copy()
+            self.policy_obs[0, 0] = self.policy_obs[0, -1].copy()
+        self.rnn_states[0, 0] = self.rnn_states[0, -1].copy()
+        self.rnn_states_critic[0, 0] = self.rnn_states_critic[0, -1].copy()
+        self.masks[0, 0] = self.masks[0, -1].copy()
+        self.bad_masks[0, 0] = self.bad_masks[0, -1].copy()
+        self.active_masks[0, 0] = self.active_masks[0, -1].copy()
         if self.action_masks is not None:
-            self.action_masks[0] = self.action_masks[-1].copy()
+            self.action_masks[0, 0] = self.action_masks[0, -1].copy()
+        
+        self.critic_obs[1:] = self.critic_obs[:-1].copy()
+        self.policy_obs[1:] =self.policy_obs[:-1].copy()
+        self.rnn_states[1:] = self.rnn_states[:-1].copy()
+        self.rnn_states_critic[1:] = self.rnn_states_critic[:-1].copy()
+
+        self.value_preds[1:] = self.value_preds[:-1].copy()
+        self.returns[1:] = self.returns[:-1].copy()
+        if self.action_masks is not None:
+            self.action_masks[1:] = self.action_masks[:-1].copy()
+        self.actions[1:] = self.actions[:-1].copy()
+        self.action_log_probs[1:] = self.action_log_probs[:-1].copy()
+        self.rewards[1:] = self.rewards[:-1].copy()
+        self.masks[1:] = self.masks[:-1].copy()
+        self.bad_masks[1:] = self.bad_masks[:-1].copy()
+        self.active_masks[1:] = self.active_masks[:-1].copy()
+
 
     def compute_returns(self, next_value, value_normalizer=None):
         if self._use_proper_time_limits:
@@ -377,25 +400,25 @@ class ReplayData(object):
                         ]
         else:
             if self._use_gae:
-                self.value_preds[-1] = next_value
+                self.value_preds[0,-1] = next_value
                 gae = 0
-                for step in reversed(range(self.rewards.shape[0])):
+                for step in reversed(range(self.rewards.shape[1])):
                     if (
                         self._use_popart or self._use_valuenorm
                     ) and value_normalizer is not None:
                         delta = (
-                            self.rewards[step]
+                            self.rewards[0,step]
                             + self.gamma
-                            * value_normalizer.denormalize(self.value_preds[step + 1])
-                            * self.masks[step + 1]
-                            - value_normalizer.denormalize(self.value_preds[step])
+                            * value_normalizer.denormalize(self.value_preds[0,step + 1])
+                            * self.masks[0,step + 1]
+                            - value_normalizer.denormalize(self.value_preds[0,step])
                         )
                         gae = (
                             delta
-                            + self.gamma * self.gae_lambda * self.masks[step + 1] * gae
+                            + self.gamma * self.gae_lambda * self.masks[0,step + 1] * gae
                         )
-                        self.returns[step] = gae + value_normalizer.denormalize(
-                            self.value_preds[step]
+                        self.returns[0,step] = gae + value_normalizer.denormalize(
+                            self.value_preds[0,step]
                         )
                     else:
                         delta = (
@@ -1062,7 +1085,7 @@ class ReplayData(object):
             yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
 
     def recurrent_generator(self, advantages, num_mini_batch, data_chunk_length):
-        episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
+        episode_length, n_rollout_threads, num_agents = self.rewards.shape[1:4]
         batch_size = n_rollout_threads * episode_length * num_agents
         data_chunks = batch_size // data_chunk_length  # [C=r*T*M/L]
 
@@ -1117,43 +1140,43 @@ class ReplayData(object):
                 else:
                     policy_obs[key] = _cast(self.policy_obs[key][:-1])
         else:
-            if len(self.critic_obs.shape) > 4:
+            if len(self.critic_obs.shape) > 5:
                 critic_obs = (
-                    self.critic_obs[:-1]
+                    self.critic_obs[0,:-1]
                     .transpose(1, 2, 0, 3, 4, 5)
-                    .reshape(-1, *self.critic_obs.shape[3:])
+                    .reshape(-1, *self.critic_obs.shape[4:])
                 )
                 policy_obs = (
-                    self.policy_obs[:-1]
+                    self.policy_obs[0,:-1]
                     .transpose(1, 2, 0, 3, 4, 5)
-                    .reshape(-1, *self.policy_obs.shape[3:])
+                    .reshape(-1, *self.policy_obs.shape[4:])
                 )
             else:
-                critic_obs = _cast(self.critic_obs[:-1])
-                policy_obs = _cast(self.policy_obs[:-1])
+                critic_obs = _cast(self.critic_obs[0,:-1])
+                policy_obs = _cast(self.policy_obs[0,:-1])
 
-        actions = _cast(self.actions)
-        action_log_probs = _cast(self.action_log_probs)
+        actions = _cast(self.actions[0])
+        action_log_probs = _cast(self.action_log_probs[0])
         advantages = _cast(advantages)
-        value_preds = _cast(self.value_preds[:-1])
-        returns = _cast(self.returns[:-1])
-        masks = _cast(self.masks[:-1])
-        active_masks = _cast(self.active_masks[:-1])
+        value_preds = _cast(self.value_preds[0,:-1])
+        returns = _cast(self.returns[0,:-1])
+        masks = _cast(self.masks[0,:-1])
+        active_masks = _cast(self.active_masks[0,:-1])
 
         rnn_states = (
-            self.rnn_states[:-1]
+            self.rnn_states[0,:-1]
             .transpose(1, 2, 0, 3, 4)
-            .reshape(-1, *self.rnn_states.shape[3:])
+            .reshape(-1, *self.rnn_states.shape[4:])
         )
         rnn_states_critic = (
-            self.rnn_states_critic[:-1]
+            self.rnn_states_critic[0,:-1]
             .transpose(1, 2, 0, 3, 4)
-            .reshape(-1, *self.rnn_states_critic.shape[3:])
+            .reshape(-1, *self.rnn_states_critic.shape[4:])
         )
 
         if self.action_masks is not None:
-            action_masks = _cast(self.action_masks[:-1])
-
+            action_masks = _cast(self.action_masks[0,:-1])
+        
         for indices in sampler:
             if self._mixed_obs:
                 critic_obs_batch = defaultdict(list)
@@ -1230,10 +1253,10 @@ class ReplayData(object):
 
             # States is just a (N, -1) from_numpy
             rnn_states_batch = np.stack(rnn_states_batch).reshape(
-                N, *self.rnn_states.shape[3:]
+                N, *self.rnn_states.shape[4:]
             )
             rnn_states_critic_batch = np.stack(rnn_states_critic_batch).reshape(
-                N, *self.rnn_states_critic.shape[3:]
+                N, *self.rnn_states_critic.shape[4:]
             )
 
             # Flatten the (L, N, ...) from_numpys to (L * N, ...)

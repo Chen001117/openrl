@@ -101,7 +101,7 @@ class OnPolicyDriver(RLDriver):
                 (
                     dones_env.sum(),
                     self.num_agents,
-                    *self.buffer.data.rnn_states_critic.shape[3:],
+                    *self.buffer.data.rnn_states_critic.shape[4:],
                 ),
                 dtype=np.float32,
             )
@@ -208,8 +208,8 @@ class OnPolicyDriver(RLDriver):
 
         next_values = self.trainer.algo_module.get_values(
             self.buffer.data.get_batch_data("critic_obs", -1),
-            np.concatenate(self.buffer.data.rnn_states_critic[-1]),
-            np.concatenate(self.buffer.data.masks[-1]),
+            np.concatenate(self.buffer.data.rnn_states_critic[0,-1]),
+            np.concatenate(self.buffer.data.masks[0,-1]),
         )
         if next_values is None:
             next_values = np.zeros([self.learner_n_rollout_threads, self.num_agents, 1])
@@ -238,7 +238,6 @@ class OnPolicyDriver(RLDriver):
         step: int,
     ):
         self.trainer.prep_rollout()
-
         (
             value,
             action,

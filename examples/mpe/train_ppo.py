@@ -10,7 +10,7 @@ from openrl.runners.common import PPOAgent as Agent
 
 def train():
     # create environment
-    env_num = 100
+    env_num = 4
     env = make(
         "simple_spread",
         env_num=env_num,
@@ -21,7 +21,7 @@ def train():
     cfg = cfg_parser.parse_args()
     net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
-    agent = Agent(net, use_wandb=True)
+    agent = Agent(net, use_wandb=False)
     # start training, set total number of training steps to 5000000
     agent.train(total_time_steps=5000000)
     env.close()
@@ -53,4 +53,4 @@ def evaluation(agent):
 
 if __name__ == "__main__":
     agent = train()
-    evaluation(agent)
+    # evaluation(agent)

@@ -52,8 +52,8 @@ class SMACInfo(EPS_RewardInfo):
         if len(self.win_history) > 0:
             info_dict["win_rate"] = np.mean(self.win_history)
 
-        dead_ratio = 1 - buffer.data.active_masks.sum() / reduce(
-            lambda x, y: x * y, list(buffer.data.active_masks.shape)
+        dead_ratio = 1 - buffer.data.active_masks[0].sum() / reduce(
+            lambda x, y: x * y, list(buffer.data.active_masks[0].shape)
         )
         info_dict["dead_ratio"] = dead_ratio
 
