@@ -29,6 +29,8 @@ from openrl.modules.networks.value_network import ValueNetwork
 from openrl.modules.rl_module import RLModule
 from openrl.modules.utils.util import update_linear_schedule
 
+from openrl.utils.util import _t2n
+
 
 class PPOModule(RLModule):
     def __init__(
@@ -122,6 +124,7 @@ class PPOModule(RLModule):
 
     def get_actions(
         self,
+        latent_code,
         critic_obs,
         obs,
         rnn_states_actor,
@@ -154,25 +157,33 @@ class PPOModule(RLModule):
             )
 
             values, rnn_states_critic = self.models["critic"](
-                critic_obs, rnn_states_critic, masks
+                latent_code, critic_obs, rnn_states_critic, masks
             )
         return values, actions, action_log_probs, rnn_states_actor, rnn_states_critic
 
-    def get_values(self, critic_obs, rnn_states_critic, masks):
+    def get_values(self, latent_code, critic_obs, rnn_states_critic, rnn_states_encoder, actions, masks, action_masks):
         if self.share_model:
             values, _ = self.models["model"](
                 "get_values", critic_obs, rnn_states_critic, masks
             )
         else:
-            values, _ = self.models["critic"](critic_obs, rnn_states_critic, masks)
+            mask = (rnn_states_encoder==0)[:,0].all(-1)
+            episode_start_idx = np.where(mask)[0]
+            mu, logvar, _ = self.models["encoder"](
+                critic_obs, actions.astype("long"), rnn_states_encoder, masks, episode_start_idx, action_masks
+            )
+            latent_code = latent_code * np.exp(_t2n(logvar)/2) + _t2n(mu)
+            values, _ = self.models["critic"](latent_code, critic_obs, rnn_states_critic, masks)
         return values
 
     def evaluate_actions(
         self,
+        sample_pos,
         critic_obs,
         obs,
         rnn_states_actor,
         rnn_states_critic,
+        rnn_states_encoder,
         action,
         masks,
         action_masks=None,
@@ -197,8 +208,18 @@ class PPOModule(RLModule):
                 active_masks,
             )
         else:
+            
+            mask = (rnn_states_encoder==0)[:,0].all(-1)
+            episode_start_idx = np.where(mask)[0]
+
+            mu, logvar, _ = self.models["encoder"](
+                critic_obs, action.astype("long"), rnn_states_encoder, masks, episode_start_idx, action_masks
+            )
+            
+            latent_code = sample_pos * torch.exp(logvar/2) + mu
+
             values, _ = self.models["critic"](
-                critic_obs, rnn_states_critic, critic_masks_batch
+                latent_code, critic_obs, rnn_states_critic, critic_masks_batch
             )
 
             action_log_probs, dist_entropy, policy_values = self.models["policy"](
@@ -211,7 +232,7 @@ class PPOModule(RLModule):
                 active_masks,
             )
 
-        return values, action_log_probs, dist_entropy, policy_values
+        return values, action_log_probs, dist_entropy, policy_values, mu, logvar
 
     def act(self, obs, rnn_states_actor, masks, action_masks=None, deterministic=False):
         if self.share_model:

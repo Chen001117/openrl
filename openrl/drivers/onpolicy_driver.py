@@ -83,6 +83,7 @@ class OnPolicyDriver(RLDriver):
         dones = data["dones"]
         infos = data["infos"]
         values = data["values"]
+        latent_code = data["latent_code"]
         actions = data["actions"]
         action_log_probs = data["action_log_probs"]
         rnn_states = data["rnn_states"]
@@ -145,6 +146,7 @@ class OnPolicyDriver(RLDriver):
             actions,
             action_log_probs,
             values,
+            latent_code,
             rewards,
             masks,
             active_masks=active_masks,
@@ -159,10 +161,10 @@ class OnPolicyDriver(RLDriver):
 
         for step in range(self.episode_length):
 
-            latent_code, rnn_states_encoder = self.encoder_act(step)
+            latent_code, sample_pos, rnn_states_encoder = self.encoder_act(step)
 
             values, actions, action_log_probs, rnn_states, rnn_states_critic = self.act(
-                step
+                step, latent_code
             )
 
             extra_data = {
@@ -187,6 +189,7 @@ class OnPolicyDriver(RLDriver):
                 "dones": dones,
                 "infos": infos,
                 "values": values,
+                "latent_code": sample_pos,
                 "actions": actions,
                 "action_log_probs": action_log_probs,
                 "rnn_states": rnn_states,
@@ -212,9 +215,13 @@ class OnPolicyDriver(RLDriver):
         self.trainer.prep_rollout()
 
         next_values = self.trainer.algo_module.get_values(
+            self.buffer.data.get_batch_data("latent_code", -1),
             self.buffer.data.get_batch_data("critic_obs", -1),
             np.concatenate(self.buffer.data.rnn_states_critic[0,-1]),
+            np.concatenate(self.buffer.data.rnn_states_encoder[0,-1]),
+            self.buffer.data.get_batch_data("actions", -1),
             np.concatenate(self.buffer.data.masks[0,-1]),
+            np.concatenate(self.buffer.data.action_masks[0,-1]),
         )
         if next_values is None:
             next_values = np.zeros([self.learner_n_rollout_threads, self.num_agents, 1])
@@ -243,32 +250,42 @@ class OnPolicyDriver(RLDriver):
         step: int
     ):
         self.trainer.prep_rollout()
-        if step == 0:
-            actions_batch_data = np.zeros_like(self.buffer.data.get_batch_data("actions", step))-1
-        else:
-            actions_batch_data = self.buffer.data.get_batch_data("actions", step-1)
+        actions_batch_data = self.buffer.data.get_batch_data("actions", step-1)
+        actions_batch_data = actions_batch_data.astype("long")
+        rnn_states_encoder = self.buffer.data.get_batch_data("rnn_states_encoder", step)
+        mask = (rnn_states_encoder==0)[:,0].all(-1)
+        episode_start_idx = np.where(mask)[0]
+
         (
             mu,
             logvar,
             rnn_states,
         ) = self.trainer.algo_module.models["encoder"](
             self.buffer.data.get_batch_data("critic_obs", step),
-            actions_batch_data.astype("long"),
+            actions_batch_data,
             self.buffer.data.get_batch_data("rnn_states_encoder", step),
             self.buffer.data.get_batch_data("masks", step),
+            episode_start_idx,
             action_masks=self.buffer.data.get_batch_data("action_masks", step),
         )
         if rnn_states is not None:
             rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
-        latent_code = torch.normal(torch.zeros_like(mu), torch.zeros_like(mu))
-        latent_code = latent_code * torch.exp(logvar/2) + mu
         
-        return latent_code, rnn_states
+        sample_pos = self.buffer.data.get_batch_data("latent_code", step)
+        rand_pos = np.random.normal(np.zeros_like(actions_batch_data), np.ones_like(actions_batch_data))
+        sample_pos[episode_start_idx] = rand_pos[episode_start_idx]
+
+        latent_code = sample_pos * np.exp(_t2n(logvar)/2) + _t2n(mu)
+        
+        sample_pos = np.array(np.split(sample_pos, self.n_rollout_threads))
+        
+        return latent_code, sample_pos, rnn_states
 
     @torch.no_grad()
     def act(
         self,
         step: int,
+        latent_code, 
     ):
         self.trainer.prep_rollout()
         (
@@ -278,6 +295,7 @@ class OnPolicyDriver(RLDriver):
             rnn_states,
             rnn_states_critic,
         ) = self.trainer.algo_module.get_actions(
+            latent_code,
             self.buffer.data.get_batch_data("critic_obs", step),
             self.buffer.data.get_batch_data("policy_obs", step),
             self.buffer.data.get_batch_data("rnn_states", step),

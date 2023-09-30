@@ -113,7 +113,7 @@ class EncoderNetwork(BaseValueNetwork):
 
         self.to(device)
 
-    def forward(self, global_state, actions, rnn_states, rnn_masks, action_masks):
+    def forward(self, global_state, actions, rnn_states, rnn_masks, episode_start_idx, action_masks):
         # actions: [batch_size, 1]
         # global_state: [batch_size, sta_size]
         # rnn_masks: [batch_size]
@@ -123,11 +123,9 @@ class EncoderNetwork(BaseValueNetwork):
             # for key in encoder_obs.keys():
             #     encoder_obs[key] = check(encoder_obs[key]).to(**self.tpdv)
         else:
-            mask = (actions==-1) | (rnn_masks==0)
-            placeholder_idx = np.where(mask)[0]
-            actions[placeholder_idx] = 0
+            actions[episode_start_idx] = 0
             actions_obs = np.eye(self.act_space[0])[actions[:,0]]
-            actions_obs[placeholder_idx] = 0
+            actions_obs[episode_start_idx] = 0
             actions_obs = check(actions_obs).to(**self.tpdv)
             global_state = check(global_state).to(**self.tpdv)
             encoder_obs = torch.cat([actions_obs, global_state], -1)

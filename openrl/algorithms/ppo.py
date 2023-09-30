@@ -54,6 +54,7 @@ class PPOAlgorithm(BaseAlgorithm):
             rnn_states_encoder_batch,
             actions_batch,
             value_preds_batch,
+            latent_code_batch,
             return_batch,
             masks_batch,
             active_masks_batch,
@@ -65,6 +66,7 @@ class PPOAlgorithm(BaseAlgorithm):
         old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
         adv_targ = check(adv_targ).to(**self.tpdv)
         value_preds_batch = check(value_preds_batch).to(**self.tpdv)
+        latent_code_batch = check(latent_code_batch).to(**self.tpdv)
         return_batch = check(return_batch).to(**self.tpdv)
         active_masks_batch = check(active_masks_batch).to(**self.tpdv)
 
@@ -88,6 +90,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     old_action_log_probs_batch,
                     adv_targ,
                     value_preds_batch,
+                    latent_code_batch,
                     return_batch,
                     active_masks_batch,
                     turn_on,
@@ -107,12 +110,16 @@ class PPOAlgorithm(BaseAlgorithm):
                 old_action_log_probs_batch,
                 adv_targ,
                 value_preds_batch,
+                latent_code_batch,
                 return_batch,
                 active_masks_batch,
                 turn_on,
             )
+            
+            total_loss = 0.
             for loss in loss_list:
-                loss.backward()
+                total_loss = total_loss + loss
+            total_loss.backward()
 
         # else:
         if self._use_share_model:
@@ -229,6 +236,7 @@ class PPOAlgorithm(BaseAlgorithm):
         old_action_log_probs_batch,
         adv_targ,
         value_preds_batch,
+        latent_code_batch,
         return_batch,
         active_masks_batch,
         turn_on,
@@ -250,11 +258,14 @@ class PPOAlgorithm(BaseAlgorithm):
             action_log_probs,
             dist_entropy,
             policy_values,
+            mu, logvar,
         ) = self.algo_module.evaluate_actions(
+            latent_code_batch,
             critic_obs_batch,
             obs_batch,
             rnn_states_batch,
             rnn_states_critic_batch,
+            rnn_states_encoder_batch,
             actions_batch,
             masks_batch,
             action_masks_batch,
@@ -347,18 +358,6 @@ class PPOAlgorithm(BaseAlgorithm):
             raise NotImplementedError
         elif isinstance(self.algo_module.models["encoder"], DistributedDataParallel):
             raise NotImplementedError
-        
-        (
-            mu,
-            logvar,
-            rnn_states_encoder_batch,
-        ) = self.algo_module.models["encoder"](
-            critic_obs_batch,
-            actions_batch.astype("long"),
-            rnn_states_encoder_batch,
-            masks_batch,
-            action_masks_batch
-        )
 
         encoder_loss = torch.sum(1 + logvar - mu**2 - torch.exp(logvar), 1)
         encoder_loss = torch.mean(-0.5 * encoder_loss, 0)

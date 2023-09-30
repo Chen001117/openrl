@@ -53,11 +53,14 @@ class ValueNetwork(BaseValueNetwork):
         self._recurrent_N = cfg.recurrent_N
         self.tpdv = dict(dtype=torch.float32, device=device)
 
+        self.latent_dim = 32
+
         init_method = [nn.init.xavier_uniform_, nn.init.orthogonal_][
             self._use_orthogonal
         ]
 
         critic_obs_shape = get_critic_obs_space(input_space)
+        critic_obs_shape = (critic_obs_shape[0]+self.latent_dim,)
 
         if "Dict" in critic_obs_shape.__class__.__name__:
             self._mixed_obs = True
@@ -109,15 +112,17 @@ class ValueNetwork(BaseValueNetwork):
 
         self.to(device)
 
-    def forward(self, critic_obs, rnn_states, masks):
+    def forward(self, latent_code, critic_obs, rnn_states, masks):
         if self._mixed_obs:
             for key in critic_obs.keys():
                 critic_obs[key] = check(critic_obs[key]).to(**self.tpdv)
         else:
+            latent_code = check(latent_code).to(**self.tpdv)
             critic_obs = check(critic_obs).to(**self.tpdv)
         rnn_states = check(rnn_states).to(**self.tpdv)
         masks = check(masks).to(**self.tpdv)
 
+        critic_obs = torch.cat([critic_obs, latent_code], -1)
         critic_features = self.base(critic_obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:

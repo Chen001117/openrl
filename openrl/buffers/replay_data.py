@@ -66,6 +66,7 @@ class ReplayData(object):
         self._use_proper_time_limits = cfg.use_proper_time_limits
 
         self._buffer_length = 2
+        self.latent_dim = 32
 
         self._mixed_obs = False  # for mixed observation
 
@@ -150,6 +151,11 @@ class ReplayData(object):
             dtype=np.float32,
         )
         self.returns = np.zeros_like(self.value_preds)
+
+        self.latent_code = np.zeros(
+            (self._buffer_length, self.episode_length + 1, self.n_rollout_threads, num_agents, self.latent_dim),
+            dtype=np.float32,
+        )
 
         if act_space.__class__.__name__ == "Discrete":
             self.action_masks = np.ones(
@@ -237,6 +243,8 @@ class ReplayData(object):
 
         if "value_preds" in data:
             self.value_preds[0, self.step] = data["value_preds"].copy()
+        if "latent_code" in data:
+            self.latent_code[0, self.step] = data["latent_code"].copy()
         if "rewards" in data:
             self.rewards[0, self.step] = data["rewards"].copy()
         if "masks" in data:
@@ -260,6 +268,7 @@ class ReplayData(object):
         actions,
         action_log_probs,
         value_preds,
+        latent_code,
         rewards,
         masks,
         bad_masks=None,
@@ -285,6 +294,7 @@ class ReplayData(object):
         self.actions[0, self.step] = actions.copy()
         self.action_log_probs[0, self.step] = action_log_probs.copy()
         self.value_preds[0, self.step] = value_preds.copy()
+        self.latent_code[0, self.step+1] = latent_code.copy()
         self.rewards[0, self.step] = rewards.copy()
         self.masks[0, self.step + 1] = masks.copy()
         if bad_masks is not None:
@@ -324,6 +334,7 @@ class ReplayData(object):
         self.rnn_states[0, 0] = self.rnn_states[0, -1].copy()
         self.rnn_states_critic[0, 0] = self.rnn_states_critic[0, -1].copy()
         self.rnn_states_encoder[0, 0] = self.rnn_states_encoder[0, -1].copy()
+        self.latent_code[0, 0] = self.latent_code[0, -1].copy()
         self.masks[0, 0] = self.masks[0, -1].copy()
         self.bad_masks[0, 0] = self.bad_masks[0, -1].copy()
         self.active_masks[0, 0] = self.active_masks[0, -1].copy()
@@ -337,6 +348,7 @@ class ReplayData(object):
         self.rnn_states_encoder[1:] = self.rnn_states_encoder[:-1].copy()
 
         self.value_preds[1:] = self.value_preds[:-1].copy()
+        self.latent_code[1:] = self.latent_code[:-1].copy()
         self.returns[1:] = self.returns[:-1].copy()
         if self.action_masks is not None:
             self.action_masks[1:] = self.action_masks[:-1].copy()
@@ -1167,6 +1179,7 @@ class ReplayData(object):
         action_log_probs = _cast(self.action_log_probs[0])
         advantages = _cast(advantages)
         value_preds = _cast(self.value_preds[0,:-1])
+        latent_code = _cast(self.latent_code[0,:-1])
         returns = _cast(self.returns[0,:-1])
         masks = _cast(self.masks[0,:-1])
         active_masks = _cast(self.active_masks[0,:-1])
@@ -1204,6 +1217,7 @@ class ReplayData(object):
             actions_batch = []
             action_masks_batch = []
             value_preds_batch = []
+            latent_code_batch = []
             return_batch = []
             masks_batch = []
             active_masks_batch = []
@@ -1232,6 +1246,7 @@ class ReplayData(object):
                         action_masks[ind : ind + data_chunk_length]
                     )
                 value_preds_batch.append(value_preds[ind : ind + data_chunk_length])
+                latent_code_batch.append(latent_code[ind : ind + data_chunk_length])
                 return_batch.append(returns[ind : ind + data_chunk_length])
                 masks_batch.append(masks[ind : ind + data_chunk_length])
                 active_masks_batch.append(active_masks[ind : ind + data_chunk_length])
@@ -1260,6 +1275,7 @@ class ReplayData(object):
             if self.action_masks is not None:
                 action_masks_batch = np.stack(action_masks_batch, axis=1)
             value_preds_batch = np.stack(value_preds_batch, axis=1)
+            latent_code_batch = np.stack(latent_code_batch, axis=1)
             return_batch = np.stack(return_batch, axis=1)
             masks_batch = np.stack(masks_batch, axis=1)
             active_masks_batch = np.stack(active_masks_batch, axis=1)
@@ -1292,6 +1308,7 @@ class ReplayData(object):
             else:
                 action_masks_batch = None
             value_preds_batch = _flatten(L, N, value_preds_batch)
+            latent_code_batch = _flatten(L, N, latent_code_batch)
             return_batch = _flatten(L, N, return_batch)
             masks_batch = _flatten(L, N, masks_batch)
             active_masks_batch = _flatten(L, N, active_masks_batch)
@@ -1299,5 +1316,5 @@ class ReplayData(object):
             adv_targ = _flatten(L, N, adv_targ)
 
             yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_encoder_batch, \
-                actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, \
-                adv_targ, action_masks_batch
+                actions_batch, value_preds_batch, latent_code_batch, return_batch, masks_batch, active_masks_batch, \
+                old_action_log_probs_batch, adv_targ, action_masks_batch
