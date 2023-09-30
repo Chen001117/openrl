@@ -23,6 +23,7 @@ import torch
 
 from openrl.modules.model_config import ModelTrainConfig
 from openrl.modules.networks.policy_network import PolicyNetwork
+from openrl.modules.networks.encoder_network import EncoderNetwork
 from openrl.modules.networks.policy_value_network import PolicyValueNetwork
 from openrl.modules.networks.value_network import ValueNetwork
 from openrl.modules.rl_module import RLModule
@@ -86,6 +87,26 @@ class PPOModule(RLModule):
                 ),
                 input_space=self.critic_input_space,
             )
+
+            import gymnasium as gym
+            from gymnasium import spaces
+            ashape = self.act_space.n
+            sshape = self.critic_input_space['critic'].shape[0]
+            encoder_input_space = gym.spaces.Dict({
+                "policy": spaces.Discrete(ashape),
+                "critic": spaces.Discrete(ashape+sshape),
+            })
+
+            model_configs["encoder"] = ModelTrainConfig(
+                lr=cfg.lr,
+                model=(
+                    self.model_dict["encoder"]
+                    if self.model_dict and "encoder" in self.model_dict
+                    else EncoderNetwork
+                ),
+                input_space=encoder_input_space,
+            )
+            
         return model_configs
 
     def lr_decay(self, episode, episodes):

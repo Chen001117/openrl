@@ -141,6 +141,7 @@ class OnPolicyDriver(RLDriver):
             obs,
             rnn_states,
             rnn_states_critic,
+            rnn_states_critic,
             actions,
             action_log_probs,
             values,
@@ -157,6 +158,9 @@ class OnPolicyDriver(RLDriver):
         self.trainer.prep_rollout()
 
         for step in range(self.episode_length):
+
+            latent_code, rnn_states_encoder = self.encoder_act(step)
+
             values, actions, action_log_probs, rnn_states, rnn_states_critic = self.act(
                 step
             )
@@ -187,6 +191,7 @@ class OnPolicyDriver(RLDriver):
                 "action_log_probs": action_log_probs,
                 "rnn_states": rnn_states,
                 "rnn_states_critic": rnn_states_critic,
+                "rnn_states_encoder": rnn_states_encoder,
             }
 
             self.add2buffer(data)
@@ -231,6 +236,34 @@ class OnPolicyDriver(RLDriver):
         else:
             value_normalizer = self.trainer.algo_module.get_critic_value_normalizer()
         self.buffer.compute_returns(next_values, value_normalizer)
+
+    @torch.no_grad()
+    def encoder_act(
+        self,
+        step: int
+    ):
+        self.trainer.prep_rollout()
+        if step == 0:
+            actions_batch_data = np.zeros_like(self.buffer.data.get_batch_data("actions", step))-1
+        else:
+            actions_batch_data = self.buffer.data.get_batch_data("actions", step-1)
+        (
+            mu,
+            logvar,
+            rnn_states,
+        ) = self.trainer.algo_module.models["encoder"](
+            self.buffer.data.get_batch_data("critic_obs", step),
+            actions_batch_data.astype("long"),
+            self.buffer.data.get_batch_data("rnn_states_encoder", step),
+            self.buffer.data.get_batch_data("masks", step),
+            action_masks=self.buffer.data.get_batch_data("action_masks", step),
+        )
+        if rnn_states is not None:
+            rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+        latent_code = torch.normal(torch.zeros_like(mu), torch.zeros_like(mu))
+        latent_code = latent_code * torch.exp(logvar/2) + mu
+        
+        return latent_code, rnn_states
 
     @torch.no_grad()
     def act(

@@ -10,3 +10,4 @@ use_joint_action_loss: false
 use_valuenorm: true
 use_adv_normalize: true
 wandb_entity: openrl-lab
+data_chunk_length: 4

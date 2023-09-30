@@ -143,6 +143,7 @@ class ReplayData(object):
             dtype=np.float32,
         )
         self.rnn_states_critic = np.zeros_like(self.rnn_states)
+        self.rnn_states_encoder = np.zeros_like(self.rnn_states)
 
         self.value_preds = np.zeros(
             (self._buffer_length, self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
@@ -227,6 +228,8 @@ class ReplayData(object):
             self.rnn_states[0, self.step + 1] = data["rnn_states"].copy()
         if "rnn_states_critic" in data:
             self.rnn_states_critic[0, self.step + 1] = data["rnn_states_critic"].copy()
+        if "rnn_states_encoder" in data:
+            self.rnn_states_encoder[0, self.step + 1] = data["rnn_states_encoder"].copy()
         if "actions" in data:
             self.actions[0, self.step] = data["actions"].copy()
         if "action_log_probs" in data:
@@ -253,6 +256,7 @@ class ReplayData(object):
         raw_obs,
         rnn_states,
         rnn_states_critic,
+        rnn_states_encoder,
         actions,
         action_log_probs,
         value_preds,
@@ -276,6 +280,8 @@ class ReplayData(object):
             self.rnn_states[0, self.step + 1] = rnn_states.copy()
         if rnn_states_critic is not None:
             self.rnn_states_critic[0, self.step + 1] = rnn_states_critic.copy()
+        if rnn_states_encoder is not None:
+            self.rnn_states_encoder[0, self.step + 1] = rnn_states_encoder.copy()
         self.actions[0, self.step] = actions.copy()
         self.action_log_probs[0, self.step] = action_log_probs.copy()
         self.value_preds[0, self.step] = value_preds.copy()
@@ -317,6 +323,7 @@ class ReplayData(object):
             self.policy_obs[0, 0] = self.policy_obs[0, -1].copy()
         self.rnn_states[0, 0] = self.rnn_states[0, -1].copy()
         self.rnn_states_critic[0, 0] = self.rnn_states_critic[0, -1].copy()
+        self.rnn_states_encoder[0, 0] = self.rnn_states_encoder[0, -1].copy()
         self.masks[0, 0] = self.masks[0, -1].copy()
         self.bad_masks[0, 0] = self.bad_masks[0, -1].copy()
         self.active_masks[0, 0] = self.active_masks[0, -1].copy()
@@ -327,6 +334,7 @@ class ReplayData(object):
         self.policy_obs[1:] =self.policy_obs[:-1].copy()
         self.rnn_states[1:] = self.rnn_states[:-1].copy()
         self.rnn_states_critic[1:] = self.rnn_states_critic[:-1].copy()
+        self.rnn_states_encoder[1:] = self.rnn_states_encoder[:-1].copy()
 
         self.value_preds[1:] = self.value_preds[:-1].copy()
         self.returns[1:] = self.returns[:-1].copy()
@@ -1173,6 +1181,11 @@ class ReplayData(object):
             .transpose(1, 2, 0, 3, 4)
             .reshape(-1, *self.rnn_states_critic.shape[4:])
         )
+        rnn_states_encoder = (
+            self.rnn_states_encoder[0,:-1]
+            .transpose(1, 2, 0, 3, 4)
+            .reshape(-1, *self.rnn_states_encoder.shape[4:])
+        )
 
         if self.action_masks is not None:
             action_masks = _cast(self.action_masks[0,:-1])
@@ -1187,6 +1200,7 @@ class ReplayData(object):
 
             rnn_states_batch = []
             rnn_states_critic_batch = []
+            rnn_states_encoder_batch = []
             actions_batch = []
             action_masks_batch = []
             value_preds_batch = []
@@ -1228,6 +1242,7 @@ class ReplayData(object):
                 # size [T+1 N M Dim]-->[T N M Dim]-->[N M T Dim]-->[N*M*T,Dim]-->[1,Dim]
                 rnn_states_batch.append(rnn_states[ind])
                 rnn_states_critic_batch.append(rnn_states_critic[ind])
+                rnn_states_encoder_batch.append(rnn_states_encoder[ind])
 
             L, N = data_chunk_length, mini_batch_size
 
@@ -1258,6 +1273,9 @@ class ReplayData(object):
             rnn_states_critic_batch = np.stack(rnn_states_critic_batch).reshape(
                 N, *self.rnn_states_critic.shape[4:]
             )
+            rnn_states_encoder_batch = np.stack(rnn_states_encoder_batch).reshape(
+                N, *self.rnn_states_encoder.shape[4:]
+            )
 
             # Flatten the (L, N, ...) from_numpys to (L * N, ...)
             if self._mixed_obs:
@@ -1280,4 +1298,6 @@ class ReplayData(object):
             old_action_log_probs_batch = _flatten(L, N, old_action_log_probs_batch)
             adv_targ = _flatten(L, N, adv_targ)
 
-            yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
+            yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_encoder_batch, \
+                actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, \
+                adv_targ, action_masks_batch

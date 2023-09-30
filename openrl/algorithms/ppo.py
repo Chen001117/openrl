@@ -51,6 +51,7 @@ class PPOAlgorithm(BaseAlgorithm):
             obs_batch,
             rnn_states_batch,
             rnn_states_critic_batch,
+            rnn_states_encoder_batch,
             actions_batch,
             value_preds_batch,
             return_batch,
@@ -80,6 +81,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     obs_batch,
                     rnn_states_batch,
                     rnn_states_critic_batch,
+                    rnn_states_encoder_batch,
                     actions_batch,
                     masks_batch,
                     action_masks_batch,
@@ -98,6 +100,7 @@ class PPOAlgorithm(BaseAlgorithm):
                 obs_batch,
                 rnn_states_batch,
                 rnn_states_critic_batch,
+                rnn_states_encoder_batch,
                 actions_batch,
                 masks_batch,
                 action_masks_batch,
@@ -219,6 +222,7 @@ class PPOAlgorithm(BaseAlgorithm):
         obs_batch,
         rnn_states_batch,
         rnn_states_critic_batch,
+        rnn_states_encoder_batch,
         actions_batch,
         masks_batch,
         action_masks_batch,
@@ -333,9 +337,33 @@ class PPOAlgorithm(BaseAlgorithm):
             active_masks_batch,
         )
 
+        # calculate loss
         loss_list = self.construct_loss_list(
             policy_loss, dist_entropy, value_loss, turn_on
         )
+
+        # encoder update
+        if self._use_share_model:
+            raise NotImplementedError
+        elif isinstance(self.algo_module.models["encoder"], DistributedDataParallel):
+            raise NotImplementedError
+        
+        (
+            mu,
+            logvar,
+            rnn_states_encoder_batch,
+        ) = self.algo_module.models["encoder"](
+            critic_obs_batch,
+            actions_batch.astype("long"),
+            rnn_states_encoder_batch,
+            masks_batch,
+            action_masks_batch
+        )
+
+        encoder_loss = torch.sum(1 + logvar - mu**2 - torch.exp(logvar), 1)
+        encoder_loss = torch.mean(-0.5 * encoder_loss, 0)
+        loss_list.append(encoder_loss * self.value_loss_coef)
+
         return loss_list, value_loss, policy_loss, dist_entropy, ratio
 
     def get_data_generator(self, buffer, advantages):
