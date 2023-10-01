@@ -47,6 +47,7 @@ class NormalReplayBuffer(object):
         action_log_probs,
         value_preds,
         latent_code,
+        sampled_pnt,
         rewards,
         masks,
         bad_masks=None,
@@ -62,6 +63,7 @@ class NormalReplayBuffer(object):
             action_log_probs,
             value_preds,
             latent_code,
+            sampled_pnt,
             rewards,
             masks,
             bad_masks,
@@ -72,8 +74,8 @@ class NormalReplayBuffer(object):
     def after_update(self):
         self.data.after_update()
 
-    def compute_returns(self, next_value, value_normalizer=None):
-        self.data.compute_returns(next_value, value_normalizer)
+    def compute_returns(self, next_value, value_normalizer=None, module=None):
+        self.data.compute_returns(next_value, value_normalizer, module)
 
     def feed_forward_generator(
         self,

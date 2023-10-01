@@ -149,6 +149,7 @@ class PPOModule(RLModule):
         else:
             actions, action_log_probs, rnn_states_actor = self.models["policy"](
                 "original",
+                latent_code,
                 obs,
                 rnn_states_actor,
                 masks,
@@ -167,14 +168,40 @@ class PPOModule(RLModule):
                 "get_values", critic_obs, rnn_states_critic, masks
             )
         else:
-            mask = (rnn_states_encoder==0)[:,0].all(-1)
-            episode_start_idx = np.where(mask)[0]
-            mu, logvar, _ = self.models["encoder"](
-                critic_obs, actions.astype("long"), rnn_states_encoder, masks, episode_start_idx, action_masks
-            )
-            latent_code = latent_code * np.exp(_t2n(logvar)/2) + _t2n(mu)
             values, _ = self.models["critic"](latent_code, critic_obs, rnn_states_critic, masks)
         return values
+    
+    def get_values_with_rnn(self, latent_code, critic_obs, rnn_states_critic, rnn_states_encoder, actions, masks, action_masks):
+        if self.share_model:
+            raise NotImplementedError
+        else:
+            values, rnn_states_critic = self.models["critic"](
+                latent_code, critic_obs, rnn_states_critic, masks
+            )
+        return values, rnn_states_critic, rnn_states_encoder
+    
+    def get_fixz_value(
+        self,
+        latent_code, 
+        critic_obs, 
+        rnn_states_critic, 
+        rnn_states_encoder, 
+        action, 
+        masks,
+        action_masks,
+    ):
+        
+        episode_start_idx = np.where(masks==0)[0]
+
+        mu, logvar, _ = self.models["encoder"](
+            critic_obs, action.astype("long"), rnn_states_encoder, masks, episode_start_idx, action_masks
+        )
+        values, _ = self.models["critic"](
+            latent_code, critic_obs, rnn_states_critic, masks
+        )
+
+        return values, logvar.exp().mean(-1, keepdims=True)
+        
 
     def evaluate_actions(
         self,
@@ -209,8 +236,7 @@ class PPOModule(RLModule):
             )
         else:
             
-            mask = (rnn_states_encoder==0)[:,0].all(-1)
-            episode_start_idx = np.where(mask)[0]
+            episode_start_idx = np.where(masks==0)[0]
 
             mu, logvar, _ = self.models["encoder"](
                 critic_obs, action.astype("long"), rnn_states_encoder, masks, episode_start_idx, action_masks
@@ -224,6 +250,7 @@ class PPOModule(RLModule):
 
             action_log_probs, dist_entropy, policy_values = self.models["policy"](
                 "eval_actions",
+                latent_code.detach(),
                 obs,
                 rnn_states_actor,
                 action,

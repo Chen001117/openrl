@@ -41,6 +41,7 @@ class PPOAlgorithm(BaseAlgorithm):
         self.use_joint_action_loss = cfg.use_joint_action_loss
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
         self.train_list = [self.train_ppo]
+        self.train_ppo_cnt = 0
 
     def ppo_update(self, sample, turn_on=True):
         for optimizer in self.algo_module.optimizers.values():
@@ -61,6 +62,17 @@ class PPOAlgorithm(BaseAlgorithm):
             old_action_log_probs_batch,
             adv_targ,
             action_masks_batch,
+            ###
+            offp_critic_obs_batch,
+            offp_rnn_states_critic_batch,
+            offp_rnn_states_encoder_batch,
+            offp_actions_batch,
+            offp_masks_batch,
+            offp_action_masks_batch,
+            offp_value_preds_batch,
+            offp_latent_code_batch,
+            offp_return_batch,
+            offp_active_masks_batch,
         ) = sample
 
         old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
@@ -69,6 +81,10 @@ class PPOAlgorithm(BaseAlgorithm):
         latent_code_batch = check(latent_code_batch).to(**self.tpdv)
         return_batch = check(return_batch).to(**self.tpdv)
         active_masks_batch = check(active_masks_batch).to(**self.tpdv)
+        offp_value_preds_batch = check(offp_value_preds_batch).to(**self.tpdv)
+        offp_latent_code_batch = check(offp_latent_code_batch).to(**self.tpdv)
+        offp_return_batch = check(offp_return_batch).to(**self.tpdv)
+        offp_active_masks_batch = check(offp_active_masks_batch).to(**self.tpdv)
 
         if self.use_amp:
             with torch.cuda.amp.autocast():
@@ -78,6 +94,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     policy_loss,
                     dist_entropy,
                     ratio,
+                    latent_sigma
                 ) = self.prepare_loss(
                     critic_obs_batch,
                     obs_batch,
@@ -93,12 +110,23 @@ class PPOAlgorithm(BaseAlgorithm):
                     latent_code_batch,
                     return_batch,
                     active_masks_batch,
+                    ### 
+                    offp_critic_obs_batch,
+                    offp_rnn_states_critic_batch,
+                    offp_rnn_states_encoder_batch,
+                    offp_actions_batch,
+                    offp_masks_batch,
+                    offp_action_masks_batch,
+                    offp_value_preds_batch,
+                    offp_latent_code_batch,
+                    offp_return_batch,
+                    offp_active_masks_batch,
                     turn_on,
                 )
             for loss in loss_list:
                 self.algo_module.scaler.scale(loss).backward()
         else:
-            loss_list, value_loss, policy_loss, dist_entropy, ratio = self.prepare_loss(
+            loss_list, value_loss, policy_loss, dist_entropy, ratio, latent_sigma = self.prepare_loss(
                 critic_obs_batch,
                 obs_batch,
                 rnn_states_batch,
@@ -113,6 +141,17 @@ class PPOAlgorithm(BaseAlgorithm):
                 latent_code_batch,
                 return_batch,
                 active_masks_batch,
+                ### 
+                offp_critic_obs_batch,
+                offp_rnn_states_critic_batch,
+                offp_rnn_states_encoder_batch,
+                offp_actions_batch,
+                offp_masks_batch,
+                offp_action_masks_batch,
+                offp_value_preds_batch,
+                offp_latent_code_batch,
+                offp_return_batch,
+                offp_active_masks_batch,
                 turn_on,
             )
             
@@ -164,6 +203,7 @@ class PPOAlgorithm(BaseAlgorithm):
             dist_entropy,
             actor_grad_norm,
             ratio,
+            latent_sigma,
         )
 
     def cal_value_loss(
@@ -239,6 +279,17 @@ class PPOAlgorithm(BaseAlgorithm):
         latent_code_batch,
         return_batch,
         active_masks_batch,
+        ### 
+        offp_critic_obs_batch,
+        offp_rnn_states_critic_batch,
+        offp_rnn_states_encoder_batch,
+        offp_actions_batch,
+        offp_masks_batch,
+        offp_action_masks_batch,
+        offp_value_preds_batch,
+        offp_latent_code_batch,
+        offp_return_batch,
+        offp_active_masks_batch,
         turn_on,
     ):
         if self.use_joint_action_loss:
@@ -361,9 +412,30 @@ class PPOAlgorithm(BaseAlgorithm):
 
         encoder_loss = torch.sum(1 + logvar - mu**2 - torch.exp(logvar), 1)
         encoder_loss = torch.mean(-0.5 * encoder_loss, 0)
-        loss_list.append(encoder_loss * self.value_loss_coef)
+        loss_list.append(encoder_loss * self.value_loss_coef * 1e-4)
+        latent_sigma = logvar.exp().mean()
 
-        return loss_list, value_loss, policy_loss, dist_entropy, ratio
+        # off-policy critic update
+        if self.train_ppo_cnt >= self.buffer_length:
+            offp_policy_values, encoder_var = self.algo_module.get_fixz_value(
+                offp_latent_code_batch,
+                offp_critic_obs_batch,
+                offp_rnn_states_critic_batch,
+                offp_rnn_states_encoder_batch,
+                offp_actions_batch,
+                offp_masks_batch,
+                offp_action_masks_batch,
+            )
+            offp_value_loss = self.cal_value_loss(
+                value_normalizer,
+                offp_policy_values,
+                offp_value_preds_batch,
+                offp_return_batch,
+                offp_active_masks_batch,
+            )
+            loss_list.append(offp_value_loss * self.value_loss_coef)
+
+        return loss_list, value_loss, policy_loss, dist_entropy, ratio, latent_sigma
 
     def get_data_generator(self, buffer, advantages):
         if self._use_recurrent_policy:
@@ -386,6 +458,8 @@ class PPOAlgorithm(BaseAlgorithm):
         return data_generator
 
     def train_ppo(self, buffer, turn_on):
+        self.buffer_length = buffer.get_buffer_length()
+        self.train_ppo_cnt += 1
         if self._use_popart or self._use_valuenorm:
             if self._use_share_model:
                 value_normalizer = self.algo_module.models["model"].value_normalizer
@@ -414,6 +488,7 @@ class PPOAlgorithm(BaseAlgorithm):
 
         train_info["value_loss"] = 0
         train_info["policy_loss"] = 0
+        train_info["latent_sigma"] = 0
 
         train_info["dist_entropy"] = 0
         train_info["actor_grad_norm"] = 0
@@ -434,6 +509,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     dist_entropy,
                     actor_grad_norm,
                     ratio,
+                    latent_sigma
                 ) = self.ppo_update(sample, turn_on)
 
                 if self.world_size > 1:
@@ -446,6 +522,7 @@ class PPOAlgorithm(BaseAlgorithm):
 
                 train_info["value_loss"] += value_loss.item()
                 train_info["policy_loss"] += policy_loss.item()
+                train_info["latent_sigma"] += latent_sigma.item()
 
                 train_info["dist_entropy"] += dist_entropy.item()
                 train_info["actor_grad_norm"] += actor_grad_norm

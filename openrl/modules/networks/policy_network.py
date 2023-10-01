@@ -56,7 +56,10 @@ class PolicyNetwork(BasePolicyNetwork):
         self.use_half = use_half
         self.tpdv = dict(dtype=torch.float32, device=device)
 
+        self.latent_dim = 16
+
         policy_obs_shape = get_policy_obs_space(input_space)
+        policy_obs_shape = (policy_obs_shape[0]+self.latent_dim,)
 
         if "Dict" in policy_obs_shape.__class__.__name__:
             self._mixed_obs = True
@@ -125,7 +128,7 @@ class PolicyNetwork(BasePolicyNetwork):
             raise NotImplementedError
 
     def forward_original(
-        self, raw_obs, rnn_states, masks, action_masks=None, deterministic=False
+        self, latent_code, raw_obs, rnn_states, masks, action_masks=None, deterministic=False
     ):
         policy_obs = get_policy_obs(raw_obs)
         if self._mixed_obs:
@@ -137,12 +140,14 @@ class PolicyNetwork(BasePolicyNetwork):
             policy_obs = check(policy_obs, self.use_half, self.tpdv)
             # if self.use_half:
             #     obs = obs.half()
+        latent_code = check(latent_code, self.use_half, self.tpdv)
         rnn_states = check(rnn_states, self.use_half, self.tpdv)
         masks = check(masks, self.use_half, self.tpdv)
 
         if action_masks is not None:
             action_masks = check(action_masks, self.use_half, self.tpdv)
 
+        policy_obs = torch.cat([latent_code, policy_obs], -1)
         actor_features = self.base(policy_obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
@@ -158,14 +163,15 @@ class PolicyNetwork(BasePolicyNetwork):
         return actions, action_log_probs, rnn_states
 
     def eval_actions(
-        self, obs, rnn_states, action, masks, action_masks=None, active_masks=None
+        self, latent_code, obs, rnn_states, action, masks, action_masks=None, active_masks=None
     ):
         if self._mixed_obs:
             for key in obs.keys():
                 obs[key] = check(obs[key], self.use_half, self.tpdv)
         else:
             obs = check(obs, self.use_half, self.tpdv)
-
+        
+        latent_code = check(latent_code, self.use_half, self.tpdv)
         rnn_states = check(rnn_states, self.use_half, self.tpdv)
         action = check(action, self.use_half, self.tpdv)
         masks = check(masks, self.use_half, self.tpdv)
@@ -175,7 +181,8 @@ class PolicyNetwork(BasePolicyNetwork):
 
         if active_masks is not None:
             active_masks = check(active_masks, self.use_half, self.tpdv)
-
+        
+        obs = torch.cat([latent_code, obs], -1)
         actor_features = self.base(obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
@@ -196,15 +203,17 @@ class PolicyNetwork(BasePolicyNetwork):
 
         return action_log_probs, dist_entropy, values
 
-    def get_policy_values(self, obs, rnn_states, masks):
+    def get_policy_values(self, latent_code, obs, rnn_states, masks):
         if self._mixed_obs:
             for key in obs.keys():
                 obs[key] = check(obs[key], self.use_half, self.tpdv)
         else:
             obs = check(obs).to(**self.tpdv)
+        latent_code = check(latent_code, self.use_half, self.tpdv)
         rnn_states = check(rnn_states, self.use_half, self.tpdv)
         masks = check(masks, self.use_half, self.tpdv)
 
+        obs = torch.cat([latent_code, obs], -1)
         actor_features = self.base(obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:

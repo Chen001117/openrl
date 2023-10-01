@@ -25,6 +25,7 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from openrl.buffers.utils.obs_data import ObsData
 from openrl.buffers.utils.util import (
     _cast,
+    _concast,
     _cast_v3,
     _flatten,
     _flatten_v3,
@@ -35,6 +36,7 @@ from openrl.buffers.utils.util import (
     get_policy_obs_space,
     get_shape_from_act_space,
 )
+from openrl.utils.util import _t2n
 
 
 class ReplayData(object):
@@ -66,7 +68,8 @@ class ReplayData(object):
         self._use_proper_time_limits = cfg.use_proper_time_limits
 
         self._buffer_length = 2
-        self.latent_dim = 32
+        self._offp_times = 1
+        self.latent_dim = 16
 
         self._mixed_obs = False  # for mixed observation
 
@@ -156,6 +159,7 @@ class ReplayData(object):
             (self._buffer_length, self.episode_length + 1, self.n_rollout_threads, num_agents, self.latent_dim),
             dtype=np.float32,
         )
+        self.sampled_pnt = np.zeros_like(self.latent_code)
 
         if act_space.__class__.__name__ == "Discrete":
             self.action_masks = np.ones(
@@ -177,6 +181,10 @@ class ReplayData(object):
             (self._buffer_length, self.episode_length, self.n_rollout_threads, num_agents, act_shape),
             dtype=np.float32,
         )
+        self.last_actions = np.zeros(
+            (self._buffer_length, 1, self.n_rollout_threads, num_agents, act_shape),
+            dtype=np.float32,
+        )
         self.action_log_probs = np.zeros(
             (self._buffer_length, self.episode_length, self.n_rollout_threads, num_agents, act_shape),
             dtype=np.float32,
@@ -195,6 +203,9 @@ class ReplayData(object):
         self.active_masks = np.ones_like(self.masks)
 
         self.step = 0
+
+    def get_buffer_length(self):
+        return self._buffer_length
 
     def get_batch_data(
         self,
@@ -245,6 +256,8 @@ class ReplayData(object):
             self.value_preds[0, self.step] = data["value_preds"].copy()
         if "latent_code" in data:
             self.latent_code[0, self.step] = data["latent_code"].copy()
+        if "sampled_pnt" in data:
+            self.sampled_pnt[0, self.step] = data["sampled_pnt"].copy()
         if "rewards" in data:
             self.rewards[0, self.step] = data["rewards"].copy()
         if "masks" in data:
@@ -269,6 +282,7 @@ class ReplayData(object):
         action_log_probs,
         value_preds,
         latent_code,
+        sampled_pnt,
         rewards,
         masks,
         bad_masks=None,
@@ -295,6 +309,7 @@ class ReplayData(object):
         self.action_log_probs[0, self.step] = action_log_probs.copy()
         self.value_preds[0, self.step] = value_preds.copy()
         self.latent_code[0, self.step+1] = latent_code.copy()
+        self.sampled_pnt[0, self.step+1] = sampled_pnt.copy()
         self.rewards[0, self.step] = rewards.copy()
         self.masks[0, self.step + 1] = masks.copy()
         if bad_masks is not None:
@@ -335,9 +350,11 @@ class ReplayData(object):
         self.rnn_states_critic[0, 0] = self.rnn_states_critic[0, -1].copy()
         self.rnn_states_encoder[0, 0] = self.rnn_states_encoder[0, -1].copy()
         self.latent_code[0, 0] = self.latent_code[0, -1].copy()
+        self.sampled_pnt[0, 0] = self.sampled_pnt[0, -1].copy()
         self.masks[0, 0] = self.masks[0, -1].copy()
         self.bad_masks[0, 0] = self.bad_masks[0, -1].copy()
         self.active_masks[0, 0] = self.active_masks[0, -1].copy()
+        self.last_actions[0] = self.actions[0,-1:]
         if self.action_masks is not None:
             self.action_masks[0, 0] = self.action_masks[0, -1].copy()
         
@@ -349,6 +366,7 @@ class ReplayData(object):
 
         self.value_preds[1:] = self.value_preds[:-1].copy()
         self.latent_code[1:] = self.latent_code[:-1].copy()
+        self.sampled_pnt[1:] = self.sampled_pnt[:-1].copy()
         self.returns[1:] = self.returns[:-1].copy()
         if self.action_masks is not None:
             self.action_masks[1:] = self.action_masks[:-1].copy()
@@ -360,7 +378,7 @@ class ReplayData(object):
         self.active_masks[1:] = self.active_masks[:-1].copy()
 
 
-    def compute_returns(self, next_value, value_normalizer=None):
+    def compute_returns(self, next_value, value_normalizer=None, module=None):
         if self._use_proper_time_limits:
             if self._use_gae:
                 self.value_preds[-1] = next_value
@@ -460,6 +478,56 @@ class ReplayData(object):
                         self.returns[step + 1] * self.gamma * self.masks[step + 1]
                         + self.rewards[step]
                     )
+
+        # latent_code_batch = self.latent_code[1:]
+        # state_batch = self.critic_obs[1:]
+        # rnn_critic_batch = self.rnn_states_critic[1:]
+        # rnn_critic_batch = np.concatenate(np.concatenate(rnn_critic_batch[:,0]))
+        # rnn_encoder_batch = self.rnn_states_encoder[1:]
+        # rnn_encoder_batch = np.concatenate(np.concatenate(rnn_encoder_batch[:,0]))
+        # actions_batch = np.concatenate([self.last_actions, self.actions], 1)[1:]
+        # masks_batch = self.masks[1:]
+        # actions_masks_batch = self.action_masks[1:]
+
+        # for step in reversed(range(self.rewards.shape[1])):
+        #     value_pred, rnn_critic_batch, _ = module.get_values_with_rnn(
+        #         np.concatenate(np.concatenate(latent_code_batch[:,step])),
+        #         np.concatenate(np.concatenate(state_batch[:,step])),
+        #         rnn_critic_batch,
+        #         rnn_encoder_batch,
+        #         np.concatenate(np.concatenate(actions_batch[:,step])),
+        #         np.concatenate(np.concatenate(masks_batch[:,step])),
+        #         np.concatenate(np.concatenate(actions_masks_batch[:,step])),
+        #     )
+        #     self.value_preds[1:, step] = _t2n(value_pred).reshape([
+        #         self._buffer_length-1,
+        #         self.n_rollout_threads, -1, 1
+        #     ])
+        #     rnn_critic_batch = _t2n(rnn_critic_batch)
+        #     # rnn_encoder_batch = _t2n(rnn_encoder_batch)
+
+        # gae = 0
+        # for step in reversed(range(self.rewards.shape[1])):
+        #     if (
+        #         self._use_popart or self._use_valuenorm
+        #     ) and value_normalizer is not None:
+        #         delta = (
+        #             self.rewards[1:,step]
+        #             + self.gamma
+        #             * value_normalizer.denormalize(self.value_preds[1:,step + 1])
+        #             * self.masks[0,step + 1]
+        #             - value_normalizer.denormalize(self.value_preds[1:,step])
+        #         )
+        #         gae = (
+        #             delta
+        #             + self.gamma * self.gae_lambda * self.masks[1:,step + 1] * gae
+        #         )
+        #         self.returns[1:,step] = gae + value_normalizer.denormalize(
+        #             self.value_preds[1:,step]
+        #         )
+        #     else:
+        #         raise NotImplementedError
+
 
     def recurrent_generator_v3(self, advantages, num_mini_batch, data_chunk_length):
         episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
@@ -1105,10 +1173,11 @@ class ReplayData(object):
             yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
 
     def recurrent_generator(self, advantages, num_mini_batch, data_chunk_length):
-        episode_length, n_rollout_threads, num_agents = self.rewards.shape[1:4]
+
+        buffer_length, episode_length, n_rollout_threads, num_agents = self.rewards.shape[:4]
+
         batch_size = n_rollout_threads * episode_length * num_agents
         data_chunks = batch_size // data_chunk_length  # [C=r*T*M/L]
-
         mini_batch_size = data_chunks // num_mini_batch
 
         assert n_rollout_threads * episode_length * num_agents >= data_chunk_length, (
@@ -1179,7 +1248,7 @@ class ReplayData(object):
         action_log_probs = _cast(self.action_log_probs[0])
         advantages = _cast(advantages)
         value_preds = _cast(self.value_preds[0,:-1])
-        latent_code = _cast(self.latent_code[0,:-1])
+        sampled_pnt = _cast(self.sampled_pnt[0,:-1])
         returns = _cast(self.returns[0,:-1])
         masks = _cast(self.masks[0,:-1])
         active_masks = _cast(self.active_masks[0,:-1])
@@ -1217,7 +1286,7 @@ class ReplayData(object):
             actions_batch = []
             action_masks_batch = []
             value_preds_batch = []
-            latent_code_batch = []
+            sampled_pnt_batch = []
             return_batch = []
             masks_batch = []
             active_masks_batch = []
@@ -1246,7 +1315,7 @@ class ReplayData(object):
                         action_masks[ind : ind + data_chunk_length]
                     )
                 value_preds_batch.append(value_preds[ind : ind + data_chunk_length])
-                latent_code_batch.append(latent_code[ind : ind + data_chunk_length])
+                sampled_pnt_batch.append(sampled_pnt[ind : ind + data_chunk_length])
                 return_batch.append(returns[ind : ind + data_chunk_length])
                 masks_batch.append(masks[ind : ind + data_chunk_length])
                 active_masks_batch.append(active_masks[ind : ind + data_chunk_length])
@@ -1275,7 +1344,7 @@ class ReplayData(object):
             if self.action_masks is not None:
                 action_masks_batch = np.stack(action_masks_batch, axis=1)
             value_preds_batch = np.stack(value_preds_batch, axis=1)
-            latent_code_batch = np.stack(latent_code_batch, axis=1)
+            sampled_pnt_batch = np.stack(sampled_pnt_batch, axis=1)
             return_batch = np.stack(return_batch, axis=1)
             masks_batch = np.stack(masks_batch, axis=1)
             active_masks_batch = np.stack(active_masks_batch, axis=1)
@@ -1308,13 +1377,150 @@ class ReplayData(object):
             else:
                 action_masks_batch = None
             value_preds_batch = _flatten(L, N, value_preds_batch)
-            latent_code_batch = _flatten(L, N, latent_code_batch)
+            sampled_pnt_batch = _flatten(L, N, sampled_pnt_batch)
             return_batch = _flatten(L, N, return_batch)
             masks_batch = _flatten(L, N, masks_batch)
             active_masks_batch = _flatten(L, N, active_masks_batch)
             old_action_log_probs_batch = _flatten(L, N, old_action_log_probs_batch)
             adv_targ = _flatten(L, N, adv_targ)
 
-            yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_encoder_batch, \
-                actions_batch, value_preds_batch, latent_code_batch, return_batch, masks_batch, active_masks_batch, \
-                old_action_log_probs_batch, adv_targ, action_masks_batch
+        ### 
+        
+        offp_batch_size = (self._buffer_length-1) * n_rollout_threads * episode_length * num_agents
+        offp_data_chunks = offp_batch_size // data_chunk_length  # [C=r*T*M/L]
+        used_batch_size =  self._offp_times * n_rollout_threads * episode_length * num_agents
+        used_data_chunks = used_batch_size // data_chunk_length  # [C=r*T*M/L]
+        used_mini_batch_size = used_data_chunks // num_mini_batch
+        
+        offp_rand = torch.randperm(offp_data_chunks).numpy()[:used_data_chunks]
+        offp_sampler = [
+            offp_rand[i * used_mini_batch_size : (i + 1) * used_mini_batch_size]
+            for i in range(num_mini_batch)
+        ]
+
+        if self._mixed_obs:
+            raise NotImplementedError
+        else:
+            if len(self.critic_obs.shape) > 5:
+                offp_critic_obs = (
+                    self.critic_obs[1:,:-1]
+                    .transpose(1, 2, 0, 3, 4, 5)
+                    .reshape(-1, *self.critic_obs.shape[4:])
+                )
+            else:
+                offp_critic_obs = _concast(self.critic_obs[1:,:-1])
+
+        offp_actions = _concast(self.actions[1:])
+        offp_value_preds = _concast(self.value_preds[1:,:-1])
+        offp_latent_code = _concast(self.latent_code[1:,:-1])
+        offp_returns = _concast(self.returns[1:,:-1])
+        offp_masks = _concast(self.masks[1:,:-1])
+        offp_active_masks = _concast(self.active_masks[1:,:-1])
+
+        offp_rnn_states_critic = (
+            np.concatenate(self.rnn_states_critic[1:,:-1])
+            .transpose(1, 2, 0, 3, 4)
+            .reshape(-1, *self.rnn_states_critic.shape[4:])
+        )
+        offp_rnn_states_encoder = (
+            np.concatenate(self.rnn_states_encoder[1:,:-1])
+            .transpose(1, 2, 0, 3, 4)
+            .reshape(-1, *self.rnn_states_encoder.shape[4:])
+        )
+
+        if self.action_masks is not None:
+            offp_action_masks = _concast(self.action_masks[1:,:-1])
+        
+        for indices in offp_sampler:
+            if self._mixed_obs:
+                raise NotImplementedError
+            else:
+                offp_critic_obs_batch = []
+
+            offp_rnn_states_critic_batch = []
+            offp_rnn_states_encoder_batch = []
+            offp_actions_batch = []
+            offp_action_masks_batch = []
+            offp_value_preds_batch = []
+            offp_latent_code_batch = []
+            offp_return_batch = []
+            offp_masks_batch = []
+            offp_active_masks_batch = []
+
+            for index in indices:
+                ind = index * data_chunk_length
+                # size [T+1 N M Dim]-->[T N M Dim]-->[N,M,T,Dim]-->[N*M*T,Dim]-->[L,Dim]
+                if self._mixed_obs:
+                    raise NotImplementedError
+                else:
+                    offp_critic_obs_batch.append(offp_critic_obs[ind : ind + data_chunk_length])
+                    
+                offp_actions_batch.append(offp_actions[ind : ind + data_chunk_length])
+                if self.action_masks is not None:
+                    offp_action_masks_batch.append(
+                        offp_action_masks[ind : ind + data_chunk_length]
+                    )
+                offp_value_preds_batch.append(offp_value_preds[ind : ind + data_chunk_length])
+                offp_latent_code_batch.append(offp_latent_code[ind : ind + data_chunk_length])
+                offp_return_batch.append(offp_returns[ind : ind + data_chunk_length])
+                offp_masks_batch.append(offp_masks[ind : ind + data_chunk_length])
+                offp_active_masks_batch.append(offp_active_masks[ind : ind + data_chunk_length])
+                offp_rnn_states_critic_batch.append(offp_rnn_states_critic[ind])
+                offp_rnn_states_encoder_batch.append(offp_rnn_states_encoder[ind])
+
+            L, N = data_chunk_length, used_mini_batch_size
+
+            # These are all from_numpys of size (L, N, Dim)
+            if self._mixed_obs:
+                raise NotImplementedError
+            else:
+                offp_critic_obs_batch = np.stack(offp_critic_obs_batch, axis=1)
+
+            offp_actions_batch = np.stack(offp_actions_batch, axis=1)
+            if self.action_masks is not None:
+                offp_action_masks_batch = np.stack(offp_action_masks_batch, axis=1)
+            offp_value_preds_batch = np.stack(offp_value_preds_batch, axis=1)
+            offp_latent_code_batch = np.stack(offp_latent_code_batch, axis=1)
+            offp_return_batch = np.stack(offp_return_batch, axis=1)
+            offp_masks_batch = np.stack(offp_masks_batch, axis=1)
+            offp_active_masks_batch = np.stack(offp_active_masks_batch, axis=1)
+
+            # States is just a (N, -1) from_numpy
+            offp_rnn_states_critic_batch = np.stack(offp_rnn_states_critic_batch).reshape(
+                N, *self.rnn_states_critic.shape[4:]
+            )
+            offp_rnn_states_encoder_batch = np.stack(offp_rnn_states_encoder_batch).reshape(
+                N, *self.rnn_states_encoder.shape[4:]
+            )
+
+            # Flatten the (L, N, ...) from_numpys to (L * N, ...)
+            if self._mixed_obs:
+                raise NotImplementedError
+            else:
+                offp_critic_obs_batch = _flatten(L, N, offp_critic_obs_batch)
+            offp_actions_batch = _flatten(L, N, offp_actions_batch)
+            if self.action_masks is not None:
+                offp_action_masks_batch = _flatten(L, N, offp_action_masks_batch)
+            else:
+                offp_action_masks_batch = None
+            offp_value_preds_batch = _flatten(L, N, offp_value_preds_batch)
+            offp_latent_code_batch = _flatten(L, N, offp_latent_code_batch)
+            offp_return_batch = _flatten(L, N, offp_return_batch)
+            offp_masks_batch = _flatten(L, N, offp_masks_batch)
+            offp_active_masks_batch = _flatten(L, N, offp_active_masks_batch)
+            
+
+        yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_encoder_batch, \
+                actions_batch, value_preds_batch, sampled_pnt_batch, return_batch, masks_batch, active_masks_batch, \
+                old_action_log_probs_batch, adv_targ, action_masks_batch, \
+                offp_critic_obs_batch, \
+                offp_rnn_states_critic_batch, \
+                offp_rnn_states_encoder_batch, \
+                offp_actions_batch, \
+                offp_masks_batch, \
+                offp_action_masks_batch, \
+                offp_value_preds_batch, \
+                offp_latent_code_batch, \
+                offp_return_batch, \
+                offp_active_masks_batch \
+

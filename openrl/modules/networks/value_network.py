@@ -53,7 +53,7 @@ class ValueNetwork(BaseValueNetwork):
         self._recurrent_N = cfg.recurrent_N
         self.tpdv = dict(dtype=torch.float32, device=device)
 
-        self.latent_dim = 32
+        self.latent_dim = 16
 
         init_method = [nn.init.xavier_uniform_, nn.init.orthogonal_][
             self._use_orthogonal

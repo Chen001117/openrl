@@ -96,6 +96,9 @@ def _flatten_v3(T, N, agent_num, x):
 def _cast(x):
     return x.transpose(1, 2, 0, 3).reshape(-1, *x.shape[3:])
 
+def _concast(x):
+    x = np.concatenate(x)
+    return x.transpose(1, 2, 0, 3).reshape(-1, *x.shape[3:])
 
 def _cast_v3(x):
     return x.transpose(1, 0, 2, 3).reshape(-1, *x.shape[2:])

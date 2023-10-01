@@ -45,7 +45,7 @@ class EncoderNetwork(BaseValueNetwork):
     ):
         super(EncoderNetwork, self).__init__(cfg, device)
 
-        self.latent_size = 32
+        self.latent_dim = 16
 
         self.hidden_size = cfg.hidden_size
         self._use_orthogonal = cfg.use_orthogonal
@@ -108,8 +108,8 @@ class EncoderNetwork(BaseValueNetwork):
         def init_(m):
             return init(m, init_method, lambda x: nn.init.constant_(x, 0))
 
-        self.mu_out = init_(nn.Linear(input_size, self.latent_size))
-        self.logvar_out = init_(nn.Linear(input_size, self.latent_size))
+        self.mu_out = init_(nn.Linear(input_size, self.latent_dim))
+        self.logvar_out = init_(nn.Linear(input_size, self.latent_dim))
 
         self.to(device)
 
