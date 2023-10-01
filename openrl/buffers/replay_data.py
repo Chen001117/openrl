@@ -1245,10 +1245,12 @@ class ReplayData(object):
                 policy_obs = _cast(self.policy_obs[0,:-1])
 
         actions = _cast(self.actions[0])
+        actions_obs = np.concatenate([self.last_actions[0], self.actions[0,:-1].copy()])
+        actions_obs = _cast(actions_obs)
         action_log_probs = _cast(self.action_log_probs[0])
         advantages = _cast(advantages)
         value_preds = _cast(self.value_preds[0,:-1])
-        sampled_pnt = _cast(self.sampled_pnt[0,:-1])
+        sampled_pnt = _cast(self.sampled_pnt[0,1:])
         returns = _cast(self.returns[0,:-1])
         masks = _cast(self.masks[0,:-1])
         active_masks = _cast(self.active_masks[0,:-1])
@@ -1284,6 +1286,7 @@ class ReplayData(object):
             rnn_states_critic_batch = []
             rnn_states_encoder_batch = []
             actions_batch = []
+            actions_obs_batch = []
             action_masks_batch = []
             value_preds_batch = []
             sampled_pnt_batch = []
@@ -1310,6 +1313,7 @@ class ReplayData(object):
                     policy_obs_batch.append(policy_obs[ind : ind + data_chunk_length])
 
                 actions_batch.append(actions[ind : ind + data_chunk_length])
+                actions_obs_batch.append(actions_obs[ind : ind + data_chunk_length])
                 if self.action_masks is not None:
                     action_masks_batch.append(
                         action_masks[ind : ind + data_chunk_length]
@@ -1341,6 +1345,7 @@ class ReplayData(object):
                 policy_obs_batch = np.stack(policy_obs_batch, axis=1)
 
             actions_batch = np.stack(actions_batch, axis=1)
+            actions_obs_batch = np.stack(actions_obs_batch, axis=1)
             if self.action_masks is not None:
                 action_masks_batch = np.stack(action_masks_batch, axis=1)
             value_preds_batch = np.stack(value_preds_batch, axis=1)
@@ -1372,6 +1377,7 @@ class ReplayData(object):
                 critic_obs_batch = _flatten(L, N, critic_obs_batch)
                 policy_obs_batch = _flatten(L, N, policy_obs_batch)
             actions_batch = _flatten(L, N, actions_batch)
+            actions_obs_batch = _flatten(L, N, actions_obs_batch)
             if self.action_masks is not None:
                 action_masks_batch = _flatten(L, N, action_masks_batch)
             else:
@@ -1511,8 +1517,8 @@ class ReplayData(object):
             
 
         yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_encoder_batch, \
-                actions_batch, value_preds_batch, sampled_pnt_batch, return_batch, masks_batch, active_masks_batch, \
-                old_action_log_probs_batch, adv_targ, action_masks_batch, \
+                actions_batch, actions_obs_batch, value_preds_batch, sampled_pnt_batch, return_batch, masks_batch, \
+                active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch, \
                 offp_critic_obs_batch, \
                 offp_rnn_states_critic_batch, \
                 offp_rnn_states_encoder_batch, \

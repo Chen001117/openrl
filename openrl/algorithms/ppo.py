@@ -54,6 +54,7 @@ class PPOAlgorithm(BaseAlgorithm):
             rnn_states_critic_batch,
             rnn_states_encoder_batch,
             actions_batch,
+            actions_obs_batch,
             value_preds_batch,
             latent_code_batch,
             return_batch,
@@ -102,6 +103,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     rnn_states_critic_batch,
                     rnn_states_encoder_batch,
                     actions_batch,
+                    actions_obs_batch,
                     masks_batch,
                     action_masks_batch,
                     old_action_log_probs_batch,
@@ -133,6 +135,7 @@ class PPOAlgorithm(BaseAlgorithm):
                 rnn_states_critic_batch,
                 rnn_states_encoder_batch,
                 actions_batch,
+                actions_obs_batch,
                 masks_batch,
                 action_masks_batch,
                 old_action_log_probs_batch,
@@ -271,6 +274,7 @@ class PPOAlgorithm(BaseAlgorithm):
         rnn_states_critic_batch,
         rnn_states_encoder_batch,
         actions_batch,
+        actions_obs_batch,
         masks_batch,
         action_masks_batch,
         old_action_log_probs_batch,
@@ -303,7 +307,7 @@ class PPOAlgorithm(BaseAlgorithm):
 
         else:
             critic_masks_batch = masks_batch
-
+        
         (
             values,
             action_log_probs,
@@ -318,6 +322,7 @@ class PPOAlgorithm(BaseAlgorithm):
             rnn_states_critic_batch,
             rnn_states_encoder_batch,
             actions_batch,
+            actions_obs_batch,
             masks_batch,
             action_masks_batch,
             active_masks_batch,
@@ -417,14 +422,11 @@ class PPOAlgorithm(BaseAlgorithm):
 
         # off-policy critic update
         if self.train_ppo_cnt >= self.buffer_length:
-            offp_policy_values, encoder_var = self.algo_module.get_fixz_value(
+            offp_policy_values = self.algo_module.get_fixz_value(
                 offp_latent_code_batch,
                 offp_critic_obs_batch,
                 offp_rnn_states_critic_batch,
-                offp_rnn_states_encoder_batch,
-                offp_actions_batch,
                 offp_masks_batch,
-                offp_action_masks_batch,
             )
             offp_value_loss = self.cal_value_loss(
                 value_normalizer,
@@ -433,7 +435,7 @@ class PPOAlgorithm(BaseAlgorithm):
                 offp_return_batch,
                 offp_active_masks_batch,
             )
-            loss_list.append(offp_value_loss * self.value_loss_coef)
+            loss_list.append(offp_value_loss * self.value_loss_coef * 0.5)
 
         return loss_list, value_loss, policy_loss, dist_entropy, ratio, latent_sigma
 

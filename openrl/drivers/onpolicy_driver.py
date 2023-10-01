@@ -270,11 +270,7 @@ class OnPolicyDriver(RLDriver):
         masks = self.buffer.data.get_batch_data("masks", step)
         episode_start_idx = np.where((masks==0)[:,0])[0]
         
-        (
-            mu,
-            logvar,
-            rnn_states,
-        ) = self.trainer.algo_module.models["encoder"](
+        mu, logvar, rnn_states_encoder = self.trainer.algo_module.models["encoder"](
             self.buffer.data.get_batch_data("critic_obs", step),
             actions_batch_data,
             rnn_states_encoder,
@@ -282,21 +278,16 @@ class OnPolicyDriver(RLDriver):
             episode_start_idx,
             action_masks=self.buffer.data.get_batch_data("action_masks", step),
         )
-        if rnn_states is not None:
-            rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+        
+        rnn_states_encoder = np.array(np.split(_t2n(rnn_states_encoder), self.n_rollout_threads))
 
-        # sampled_pnt = self.buffer.data.get_batch_data("sampled_pnt", step)
-        # if len(episode_start_idx) > 0:
-        #     rand_pos = np.random.normal(np.zeros_like(actions_batch_data), np.ones_like(actions_batch_data))
-        #     sampled_pnt[episode_start_idx] = rand_pos[episode_start_idx]
         sampled_pnt= np.random.normal(np.zeros_like(actions_batch_data), np.ones_like(actions_batch_data))
-
         latent_code = sampled_pnt * np.exp(_t2n(logvar)/2) + _t2n(mu)
         
         latent_code = np.array(np.split(latent_code, self.n_rollout_threads))
         sampled_pnt = np.array(np.split(sampled_pnt, self.n_rollout_threads))
         
-        return latent_code, sampled_pnt, rnn_states
+        return latent_code, sampled_pnt, rnn_states_encoder
 
     @torch.no_grad()
     def act(

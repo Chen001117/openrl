@@ -185,22 +185,14 @@ class PPOModule(RLModule):
         latent_code, 
         critic_obs, 
         rnn_states_critic, 
-        rnn_states_encoder, 
-        action, 
         masks,
-        action_masks,
     ):
         
-        episode_start_idx = np.where(masks==0)[0]
-
-        mu, logvar, _ = self.models["encoder"](
-            critic_obs, action.astype("long"), rnn_states_encoder, masks, episode_start_idx, action_masks
-        )
         values, _ = self.models["critic"](
             latent_code, critic_obs, rnn_states_critic, masks
         )
 
-        return values, logvar.exp().mean(-1, keepdims=True)
+        return values
         
 
     def evaluate_actions(
@@ -212,6 +204,7 @@ class PPOModule(RLModule):
         rnn_states_critic,
         rnn_states_encoder,
         action,
+        action_obs,
         masks,
         action_masks=None,
         active_masks=None,
@@ -235,11 +228,11 @@ class PPOModule(RLModule):
                 active_masks,
             )
         else:
-            
             episode_start_idx = np.where(masks==0)[0]
+            action_obs = action_obs.astype("long")
 
             mu, logvar, _ = self.models["encoder"](
-                critic_obs, action.astype("long"), rnn_states_encoder, masks, episode_start_idx, action_masks
+                critic_obs, action_obs, rnn_states_encoder, masks, episode_start_idx, action_masks
             )
             
             latent_code = sample_pos * torch.exp(logvar/2) + mu
@@ -247,7 +240,6 @@ class PPOModule(RLModule):
             values, _ = self.models["critic"](
                 latent_code, critic_obs, rnn_states_critic, critic_masks_batch
             )
-
             action_log_probs, dist_entropy, policy_values = self.models["policy"](
                 "eval_actions",
                 latent_code.detach(),
