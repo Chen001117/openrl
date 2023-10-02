@@ -216,13 +216,15 @@ class PPOAlgorithm(BaseAlgorithm):
         value_preds_batch,
         return_batch,
         active_masks_batch,
+        update=True,
     ):
         value_pred_clipped = value_preds_batch + (values - value_preds_batch).clamp(
             -self.clip_param, self.clip_param
         )
 
         if self._use_popart or self._use_valuenorm:
-            value_normalizer.update(return_batch)
+            if update:
+                value_normalizer.update(return_batch)
             error_clipped = (
                 value_normalizer.normalize(return_batch) - value_pred_clipped
             )
@@ -434,8 +436,9 @@ class PPOAlgorithm(BaseAlgorithm):
                 offp_value_preds_batch,
                 offp_return_batch,
                 offp_active_masks_batch,
+                update=False,
             )
-            loss_list.append(offp_value_loss * self.value_loss_coef * 0.5)
+            loss_list.append(offp_value_loss * self.value_loss_coef * 0.)
 
         return loss_list, value_loss, policy_loss, dist_entropy, ratio, latent_sigma
 
@@ -478,13 +481,12 @@ class PPOAlgorithm(BaseAlgorithm):
             advantages = buffer.returns[0,:-1] - buffer.value_preds[0,:-1]
 
         if self._use_adv_normalize:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
-        advantages_copy = advantages.copy()
-        advantages_copy[buffer.active_masks[0,:-1] == 0.0] = np.nan
-        mean_advantages = np.nanmean(advantages_copy)
-        std_advantages = np.nanstd(advantages_copy)
-        advantages = (advantages - mean_advantages) / (std_advantages + 1e-5)
+            advantages_copy = advantages.copy()
+            advantages_copy[buffer.active_masks[0,:-1] == 0.0] = np.nan
+            mean_advantages = np.nanmean(advantages_copy)
+            std_advantages = np.nanstd(advantages_copy)
+            advantages = (advantages - mean_advantages) / (std_advantages + 1e-5)
 
         train_info = {}
 
