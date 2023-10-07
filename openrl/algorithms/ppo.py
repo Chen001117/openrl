@@ -419,7 +419,7 @@ class PPOAlgorithm(BaseAlgorithm):
 
         encoder_loss = torch.sum(1 + logvar - mu**2 - torch.exp(logvar), 1)
         encoder_loss = torch.mean(-0.5 * encoder_loss, 0)
-        loss_list.append(encoder_loss * self.value_loss_coef * 1e-4)
+        loss_list.append(encoder_loss * self.value_loss_coef * 3e-4)
         latent_sigma = logvar.exp().mean()
 
         # off-policy critic update

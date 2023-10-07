@@ -31,6 +31,8 @@ from openrl.modules.utils.util import update_linear_schedule
 
 from openrl.utils.util import _t2n
 
+from torch.distributions import Normal
+
 
 class PPOModule(RLModule):
     def __init__(
@@ -197,7 +199,7 @@ class PPOModule(RLModule):
 
     def evaluate_actions(
         self,
-        sample_pos,
+        latent_code,
         critic_obs,
         obs,
         rnn_states_actor,
@@ -235,7 +237,10 @@ class PPOModule(RLModule):
                 critic_obs, action_obs, rnn_states_encoder, masks, episode_start_idx, action_masks
             )
             
-            latent_code = sample_pos * torch.exp(logvar/2) + mu
+            distribution = Normal(mu, logvar.exp().sqrt())
+            z_log_prob = distribution.log_prob(latent_code)
+            z_log_prob = z_log_prob.sum(-1, keepdims=True)
+            # latent_code = sample_pos * torch.exp(logvar/2) + mu
 
             values, _ = self.models["critic"](
                 latent_code, critic_obs, rnn_states_critic, critic_masks_batch
@@ -250,10 +255,11 @@ class PPOModule(RLModule):
                 action_masks,
                 active_masks,
             )
+            action_log_probs += z_log_prob
 
         return values, action_log_probs, dist_entropy, policy_values, mu, logvar
 
-    def act(self, obs, rnn_states_actor, masks, action_masks=None, deterministic=False):
+    def act(self, latent_code, obs, rnn_states_actor, masks, action_masks=None, deterministic=False):
         if self.share_model:
             model = self.models["model"]
         else:
@@ -261,6 +267,7 @@ class PPOModule(RLModule):
 
         actions, _, rnn_states_actor = model(
             "original",
+            latent_code,
             obs,
             rnn_states_actor,
             masks,

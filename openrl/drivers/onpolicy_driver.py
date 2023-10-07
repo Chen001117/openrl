@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel
+from torch.distributions import Normal
 
 from openrl.drivers.rl_driver import RLDriver
 from openrl.envs.vec_env.utils.util import prepare_action_masks
@@ -174,11 +175,12 @@ class OnPolicyDriver(RLDriver):
 
         for step in range(self.episode_length):
 
-            latent_code, sampled_pnt, rnn_states_encoder = self.encoder_act(step)
+            latent_code, sampled_pnt, rnn_states_encoder, z_log_probs = self.encoder_act(step)
 
             values, actions, action_log_probs, rnn_states, rnn_states_critic = self.act(
                 step, latent_code
             )
+            action_log_probs += z_log_probs
 
             extra_data = {
                 "actions": actions,
@@ -284,10 +286,16 @@ class OnPolicyDriver(RLDriver):
         sampled_pnt= np.random.normal(np.zeros_like(actions_batch_data), np.ones_like(actions_batch_data))
         latent_code = sampled_pnt * np.exp(_t2n(logvar)/2) + _t2n(mu)
         
+        distribution = Normal(mu.cpu(), logvar.cpu().exp().sqrt())
+        log_prob = distribution.log_prob(torch.from_numpy(latent_code))
+        log_prob = log_prob.sum(-1, keepdims=True)
+        log_prob = np.array(np.split(log_prob.numpy(), self.n_rollout_threads))
+
         latent_code = np.array(np.split(latent_code, self.n_rollout_threads))
         sampled_pnt = np.array(np.split(sampled_pnt, self.n_rollout_threads))
+
         
-        return latent_code, sampled_pnt, rnn_states_encoder
+        return latent_code, sampled_pnt, rnn_states_encoder, log_prob
 
     @torch.no_grad()
     def act(

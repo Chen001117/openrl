@@ -97,7 +97,9 @@ def evaluate_policy(
     episode_starts = np.ones((env.parallel_env_num,), dtype=bool)
 
     while (episode_counts < episode_count_targets).any():
+        
         actions, states = agent.act(
+            latent_code,
             observations,
             infos,
             deterministic=deterministic,

@@ -1250,7 +1250,7 @@ class ReplayData(object):
         action_log_probs = _cast(self.action_log_probs[0])
         advantages = _cast(advantages)
         value_preds = _cast(self.value_preds[0,:-1])
-        sampled_pnt = _cast(self.sampled_pnt[0,1:])
+        sampled_pnt = _cast(self.latent_code[0,1:]) # TODO
         returns = _cast(self.returns[0,:-1])
         masks = _cast(self.masks[0,:-1])
         active_masks = _cast(self.active_masks[0,:-1])
