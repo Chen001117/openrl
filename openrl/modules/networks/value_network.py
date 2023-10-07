@@ -42,6 +42,8 @@ class ValueNetwork(BaseValueNetwork):
     ):
         super(ValueNetwork, self).__init__(cfg, device)
 
+        self._use_transformer = True
+
         self.hidden_size = cfg.hidden_size
         self._use_orthogonal = cfg.use_orthogonal
         self._activation_id = cfg.activation_id
@@ -59,74 +61,119 @@ class ValueNetwork(BaseValueNetwork):
 
         critic_obs_shape = get_critic_obs_space(input_space)
 
-        if "Dict" in critic_obs_shape.__class__.__name__:
-            self._mixed_obs = True
-            self.base = MIXBase(
-                cfg, critic_obs_shape, cnn_layers_params=cfg.cnn_layers_params
+        if self._use_transformer:
+
+            import transformers
+            config = transformers.GPT2Config(
+                n_embd=self.hidden_size,
+                n_positions=1024,
+                n_layer=3,
+                n_head=1,
+                n_inner=128,
+                activation_function="tanh",
             )
+            self.transformer = transformers.GPT2Model(config)
+            # self.transformer = transformers.GPT2Model.from_pretrained(
+            #     'gpt2', config=config
+            # )
+
+            obs_dim = critic_obs_shape[0]
+            self.embed_obs = torch.nn.Linear(obs_dim, self.hidden_size)
+
+            self._mixed_obs = ("Dict" in critic_obs_shape.__class__.__name__)
+        
         else:
-            self._mixed_obs = False
-            self.base = (
-                CNNBase(cfg, critic_obs_shape)
-                if len(critic_obs_shape) == 3
-                else MLPBase(
-                    cfg,
-                    critic_obs_shape,
-                    use_attn_internal=True,
-                    use_cat_self=cfg.use_cat_self,
+            if "Dict" in critic_obs_shape.__class__.__name__:
+                self._mixed_obs = True
+                self.base = MIXBase(
+                    cfg, critic_obs_shape, cnn_layers_params=cfg.cnn_layers_params
                 )
-            )
+            else:
+                self._mixed_obs = False
+                self.base = (
+                    CNNBase(cfg, critic_obs_shape)
+                    if len(critic_obs_shape) == 3
+                    else MLPBase(
+                        cfg,
+                        critic_obs_shape,
+                        use_attn_internal=True,
+                        use_cat_self=cfg.use_cat_self,
+                    )
+                )
 
-        input_size = self.base.output_size
+            input_size = self.base.output_size
 
-        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            self.rnn = RNNLayer(
-                input_size,
-                self.hidden_size,
-                self._recurrent_N,
-                self._use_orthogonal,
-                rnn_type=cfg.rnn_type,
-            )
-            input_size = self.hidden_size
+            if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+                self.rnn = RNNLayer(
+                    input_size,
+                    self.hidden_size,
+                    self._recurrent_N,
+                    self._use_orthogonal,
+                    rnn_type=cfg.rnn_type,
+                )
+                input_size = self.hidden_size
 
-        if self._use_influence_policy:
-            self.mlp = MLPLayer(
-                critic_obs_shape[0],
-                self.hidden_size,
-                self._influence_layer_N,
-                self._use_orthogonal,
-                self._activation_id,
-            )
-            input_size += self.hidden_size
+            if self._use_influence_policy:
+                self.mlp = MLPLayer(
+                    critic_obs_shape[0],
+                    self.hidden_size,
+                    self._influence_layer_N,
+                    self._use_orthogonal,
+                    self._activation_id,
+                )
+                input_size += self.hidden_size
 
         def init_(m):
             return init(m, init_method, lambda x: nn.init.constant_(x, 0))
 
         if self._use_popart:
-            self.v_out = init_(PopArt(input_size, 1, device=device))
+            self.v_out = init_(PopArt(self.hidden_size, 1, device=device))
         else:
-            self.v_out = init_(nn.Linear(input_size, 1))
+            self.v_out = init_(nn.Linear(self.hidden_size, 1))
 
         self.to(device)
 
-    def forward(self, critic_obs, rnn_states, masks):
+    def forward(self, critic_obs, rnn_states, masks, env_step):
         if self._mixed_obs:
             for key in critic_obs.keys():
                 critic_obs[key] = check(critic_obs[key]).to(**self.tpdv)
         else:
             critic_obs = check(critic_obs).to(**self.tpdv)
-        rnn_states = check(rnn_states).to(**self.tpdv)
-        masks = check(masks).to(**self.tpdv)
 
-        critic_features = self.base(critic_obs)
+        if self._use_transformer:
 
-        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            critic_features, rnn_states = self.rnn(critic_features, rnn_states, masks)
+            batch_size, seq_length, _ = critic_obs.shape
 
-        if self._use_influence_policy:
-            mlp_critic_obs = self.mlp(critic_obs)
-            critic_features = torch.cat([critic_features, mlp_critic_obs], dim=1)
+            env_step = env_step.squeeze(-1)
+            env_step = check(env_step).to(**self.tpdv).long()
+
+            attention_mask = torch.zeros([batch_size, seq_length])
+            attention_mask = check(attention_mask).to(**self.tpdv)
+            for data_id in range(batch_size):
+                attention_mask[data_id,-env_step[data_id,-1]-1:] = 1.
+
+            critic_features = self.embed_obs(critic_obs)
+            transformer_outputs = self.transformer(
+                inputs_embeds=critic_features,
+                attention_mask=attention_mask,
+                position_ids=env_step,
+            )
+            critic_features = transformer_outputs['last_hidden_state']
+            critic_features = critic_features[:,-1]
+        else:
+
+            rnn_states = check(rnn_states).to(**self.tpdv)
+            masks = check(masks).to(**self.tpdv)
+
+            critic_features = self.base(critic_obs)
+
+            if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+                critic_features, rnn_states = self.rnn(critic_features, rnn_states, masks)
+
+            if self._use_influence_policy:
+                mlp_critic_obs = self.mlp(critic_obs)
+                critic_features = torch.cat([critic_features, mlp_critic_obs], dim=1)
 
         values = self.v_out(critic_features)
 
-        return values, rnn_states
+        return values, None

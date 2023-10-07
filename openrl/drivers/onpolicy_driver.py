@@ -53,6 +53,7 @@ class OnPolicyDriver(RLDriver):
             logger,
             callback=callback,
         )
+        self.env_step = np.zeros([self.n_rollout_threads, self.num_agents, 1])
 
     def _inner_loop(
         self,
@@ -137,6 +138,9 @@ class OnPolicyDriver(RLDriver):
             ]
         )
 
+        self.env_step += 1
+        self.env_step[dones] = 0
+
         self.buffer.insert(
             obs,
             rnn_states,
@@ -146,6 +150,7 @@ class OnPolicyDriver(RLDriver):
             values,
             rewards,
             masks,
+            env_step=self.env_step,
             active_masks=active_masks,
             bad_masks=bad_masks,
             action_masks=action_masks,
@@ -207,9 +212,10 @@ class OnPolicyDriver(RLDriver):
         self.trainer.prep_rollout()
 
         next_values = self.trainer.algo_module.get_values(
-            self.buffer.data.get_batch_data("critic_obs", -1),
+            self.buffer.data.get_seq_batch_data("critic_obs", -1),
             np.concatenate(self.buffer.data.rnn_states_critic[-1]),
             np.concatenate(self.buffer.data.masks[-1]),
+            self.buffer.data.get_seq_batch_data("env_step", -1),
         )
         if next_values is None:
             next_values = np.zeros([self.learner_n_rollout_threads, self.num_agents, 1])
@@ -246,12 +252,13 @@ class OnPolicyDriver(RLDriver):
             rnn_states,
             rnn_states_critic,
         ) = self.trainer.algo_module.get_actions(
-            self.buffer.data.get_batch_data("critic_obs", step),
-            self.buffer.data.get_batch_data("policy_obs", step),
+            self.buffer.data.get_seq_batch_data("critic_obs", step),
+            self.buffer.data.get_seq_batch_data("policy_obs", step),
             self.buffer.data.get_batch_data("rnn_states", step),
             self.buffer.data.get_batch_data("rnn_states_critic", step),
             self.buffer.data.get_batch_data("masks", step),
             action_masks=self.buffer.data.get_batch_data("action_masks", step),
+            env_step=self.buffer.data.get_seq_batch_data("env_step", step),
         )
 
         if value is None:

@@ -70,8 +70,13 @@ class ReplayData(object):
         policy_obs_shape = get_policy_obs_space(obs_space)
         critic_obs_shape = get_critic_obs_space(obs_space)
 
+        self.num_agents = num_agents
+
+        self.tf_max_len = 25
+
         # for mixed observation
         if "Dict" in policy_obs_shape.__class__.__name__:
+            raise NotImplementedError
             self._mixed_obs = True
 
             self.policy_obs = {}
@@ -110,7 +115,7 @@ class ReplayData(object):
 
             self.critic_obs = np.zeros(
                 (
-                    self.episode_length + 1,
+                    self.tf_max_len + self.episode_length,
                     self.n_rollout_threads,
                     num_agents,
                     *critic_obs_shape,
@@ -119,7 +124,7 @@ class ReplayData(object):
             )
             self.policy_obs = np.zeros(
                 (
-                    self.episode_length + 1,
+                    self.tf_max_len + self.episode_length,
                     self.n_rollout_threads,
                     num_agents,
                     *policy_obs_shape,
@@ -129,7 +134,7 @@ class ReplayData(object):
 
         self.rnn_states = np.zeros(
             (
-                self.episode_length + 1,
+                self.tf_max_len + self.episode_length,
                 self.n_rollout_threads,
                 num_agents,
                 self.recurrent_N,
@@ -140,7 +145,7 @@ class ReplayData(object):
         self.rnn_states_critic = np.zeros_like(self.rnn_states)
 
         self.value_preds = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
+            (self.tf_max_len + self.episode_length, self.n_rollout_threads, num_agents, 1),
             dtype=np.float32,
         )
         self.returns = np.zeros_like(self.value_preds)
@@ -148,7 +153,7 @@ class ReplayData(object):
         if act_space.__class__.__name__ == "Discrete":
             self.action_masks = np.ones(
                 (
-                    self.episode_length + 1,
+                    self.tf_max_len + self.episode_length,
                     self.n_rollout_threads,
                     num_agents,
                     act_space.n,
@@ -161,27 +166,32 @@ class ReplayData(object):
         act_shape = get_shape_from_act_space(act_space)
 
         self.actions = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+            (self.tf_max_len+self.episode_length-1, self.n_rollout_threads, num_agents, act_shape),
             dtype=np.float32,
         )
         self.action_log_probs = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+            (self.tf_max_len+self.episode_length-1, self.n_rollout_threads, num_agents, act_shape),
             dtype=np.float32,
         )
 
         self.rewards = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, 1),
+            (self.tf_max_len+self.episode_length-1, self.n_rollout_threads, num_agents, 1),
             dtype=np.float32,
         )
 
         self.masks = np.ones(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
+            (self.tf_max_len+self.episode_length, self.n_rollout_threads, num_agents, 1),
             dtype=np.float32,
         )
         self.bad_masks = np.ones_like(self.masks)
         self.active_masks = np.ones_like(self.masks)
 
-        self.step = 0
+        self.env_step = np.zeros(
+            (self.tf_max_len+self.episode_length, self.n_rollout_threads, num_agents, 1),
+            dtype=np.long
+        )
+
+        self.step = self.tf_max_len-1
 
     def get_batch_data(
         self,
@@ -196,9 +206,29 @@ class ReplayData(object):
         if isinstance(data, ObsData):
             return data.step_batch(step)
         else:
-            return np.concatenate(data[step])
+            return np.concatenate(data[step+self.tf_max_len-1])
+        
+    def get_seq_batch_data(
+        self,
+        data_name: str,
+        step: int,
+    ):
+        assert hasattr(self, data_name)
+        data = getattr(self, data_name)
+        if data is None:
+            return None
+
+        if isinstance(data, ObsData):
+            return data.step_batch(step)
+        else:
+            step = data.shape[0]-self.tf_max_len if step==-1 else step
+            data = data[step:step+self.tf_max_len]
+            data = data.reshape([self.tf_max_len, -1, *data.shape[3:]])
+            data = np.transpose(data, [1,0,2])
+            return data
 
     def all_batch_data(self, data_name: str, min=None, max=None):
+        raise NotImplementedError
         assert hasattr(self, data_name)
         data = getattr(self, data_name)
 
@@ -240,7 +270,7 @@ class ReplayData(object):
         if "action_masks" in data:
             self.action_masks[self.step + 1] = data["action_masks"].copy()
 
-        self.step = (self.step + 1) % self.episode_length
+        self.step = ((self.step - self.tf_max_len + 2) % self.episode_length) + (self.tf_max_len - 1)
 
     def insert(
         self,
@@ -252,6 +282,7 @@ class ReplayData(object):
         value_preds,
         rewards,
         masks,
+        env_step=None,
         bad_masks=None,
         active_masks=None,
         action_masks=None,
@@ -275,50 +306,58 @@ class ReplayData(object):
         self.value_preds[self.step] = value_preds.copy()
         self.rewards[self.step] = rewards.copy()
         self.masks[self.step + 1] = masks.copy()
+        if env_step is not None:
+            self.env_step[self.step + 1] = env_step.copy()
         if bad_masks is not None:
             self.bad_masks[self.step + 1] = bad_masks.copy()
         if active_masks is not None:
             self.active_masks[self.step + 1] = active_masks.copy()
         if action_masks is not None:
             self.action_masks[self.step + 1] = action_masks.copy()
-        self.step = (self.step + 1) % self.episode_length
+        
+        self.step = ((self.step - self.tf_max_len + 2) % self.episode_length) + (self.tf_max_len - 1)
 
     def init_buffer(self, raw_obs, action_masks=None):
         critic_obs = get_critic_obs(raw_obs)
         policy_obs = get_policy_obs(raw_obs)
         if self._mixed_obs:
             for key in self.critic_obs.keys():
-                self.critic_obs[key][0] = critic_obs[key].copy()
+                self.critic_obs[key][self.tf_max_len-1] = critic_obs[key].copy()
             for key in self.policy_obs.keys():
-                self.policy_obs[key][0] = policy_obs[key].copy()
+                self.policy_obs[key][self.tf_max_len-1] = policy_obs[key].copy()
         else:
-            self.critic_obs[0] = critic_obs.copy()
-            self.policy_obs[0] = policy_obs.copy()
+            self.critic_obs[self.tf_max_len-1] = critic_obs.copy()
+            self.policy_obs[self.tf_max_len-1] = policy_obs.copy()
         if action_masks is not None and self.action_masks is not None:
-            self.action_masks[0] = action_masks
+            self.action_masks[self.tf_max_len-1] = action_masks.copy()
 
     def after_update(self):
-        assert self.step == 0, "step:{} episode:{}".format(
+        assert self.step == self.tf_max_len-1, "step:{} episode:{}".format(
             self.step, self.episode_length
         )
         if self._mixed_obs:
             for key in self.critic_obs.keys():
-                self.critic_obs[key][0] = self.critic_obs[key][-1].copy()
+                self.critic_obs[key][:self.tf_max_len] = self.critic_obs[key][-self.tf_max_len:].copy()
             for key in self.policy_obs.keys():
-                self.policy_obs[key][0] = self.policy_obs[key][-1].copy()
+                self.policy_obs[key][:self.tf_max_len] = self.policy_obs[key][-self.tf_max_len:].copy()
         else:
-            self.critic_obs[0] = self.critic_obs[-1].copy()
-            self.policy_obs[0] = self.policy_obs[-1].copy()
-        self.rnn_states[0] = self.rnn_states[-1].copy()
-        self.rnn_states_critic[0] = self.rnn_states_critic[-1].copy()
-        self.masks[0] = self.masks[-1].copy()
-        self.bad_masks[0] = self.bad_masks[-1].copy()
-        self.active_masks[0] = self.active_masks[-1].copy()
+            self.critic_obs[:self.tf_max_len] = self.critic_obs[-self.tf_max_len:].copy()
+            self.policy_obs[:self.tf_max_len] = self.policy_obs[-self.tf_max_len:].copy()
+        self.env_step[:self.tf_max_len] = self.env_step[-self.tf_max_len:].copy()
+        self.rnn_states[:self.tf_max_len] = self.rnn_states[-self.tf_max_len:].copy()
+        self.rnn_states_critic[:self.tf_max_len] = self.rnn_states_critic[-self.tf_max_len:].copy()
+        self.actions[:self.tf_max_len-1] = self.actions[-self.tf_max_len+1:].copy()
+        self.action_log_probs[:self.tf_max_len-1] = self.action_log_probs[-self.tf_max_len+1:].copy()
+        self.rewards[:self.tf_max_len-1] = self.rewards[-self.tf_max_len+1:].copy()
+        self.masks[:self.tf_max_len] = self.masks[-self.tf_max_len:].copy()
+        self.bad_masks[:self.tf_max_len] = self.bad_masks[-self.tf_max_len:].copy()
+        self.active_masks[:self.tf_max_len] = self.active_masks[-self.tf_max_len:].copy()
         if self.action_masks is not None:
-            self.action_masks[0] = self.action_masks[-1].copy()
+            self.action_masks[:self.tf_max_len] = self.action_masks[-self.tf_max_len:].copy()
 
     def compute_returns(self, next_value, value_normalizer=None):
         if self._use_proper_time_limits:
+            raise NotImplementedError
             if self._use_gae:
                 self.value_preds[-1] = next_value
                 gae = 0
@@ -379,7 +418,7 @@ class ReplayData(object):
             if self._use_gae:
                 self.value_preds[-1] = next_value
                 gae = 0
-                for step in reversed(range(self.rewards.shape[0])):
+                for step in reversed(range(self.tf_max_len-1, self.rewards.shape[0])):
                     if (
                         self._use_popart or self._use_valuenorm
                     ) and value_normalizer is not None:
@@ -411,12 +450,128 @@ class ReplayData(object):
                         )
                         self.returns[step] = gae + self.value_preds[step]
             else:
+                raise NotImplementedError
                 self.returns[-1] = next_value
                 for step in reversed(range(self.rewards.shape[0])):
                     self.returns[step] = (
                         self.returns[step + 1] * self.gamma * self.masks[step + 1]
                         + self.rewards[step]
                     )
+
+    def transformer_generator(
+        self,
+        advantages,
+        num_mini_batch=None,
+        mini_batch_size=None,
+        critic_obs_process_func=None,
+    ):
+        total_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
+        episode_length = total_length - self.tf_max_len + 1
+        total_length = total_length * n_rollout_threads * num_agents
+        batch_size = n_rollout_threads * episode_length * num_agents
+
+        if mini_batch_size is None:
+            assert (
+                batch_size >= num_mini_batch
+            ), (
+                "PPO requires the number of processes ({}) "
+                "* number of steps ({}) * number of agents ({}) = {} "
+                "to be greater than or equal to the number of PPO mini batches ({})."
+                "".format(
+                    n_rollout_threads,
+                    episode_length,
+                    num_agents,
+                    n_rollout_threads * episode_length * num_agents,
+                    num_mini_batch,
+                )
+            )
+            mini_batch_size = batch_size // num_mini_batch
+
+        batch_idx = np.arange(total_length)
+        batch_idx = batch_idx.reshape(self.rewards.shape[0:3])
+        batch_idx = batch_idx[self.tf_max_len-1:]
+        batch_idx = batch_idx.flatten()
+        sampler = BatchSampler(
+            SubsetRandomSampler(batch_idx), mini_batch_size, drop_last=True
+        )
+
+        if self._mixed_obs:
+            raise NotImplementedError
+            critic_obs = {}
+            policy_obs = {}
+            for key in self.critic_obs.keys():
+                critic_obs[key] = self.critic_obs[key][:-1].reshape(
+                    -1, *self.critic_obs[key].shape[3:]
+                )
+            for key in self.policy_obs.keys():
+                policy_obs[key] = self.policy_obs[key][:-1].reshape(
+                    -1, *self.policy_obs[key].shape[3:]
+                )
+        else:
+            critic_obs = self.critic_obs[:-1].reshape(-1, *self.critic_obs.shape[3:])
+            policy_obs = self.policy_obs[:-1].reshape(-1, *self.policy_obs.shape[3:])
+        env_step = self.env_step[:-1].reshape(-1, *self.env_step.shape[3:])
+        rnn_states = self.rnn_states[:-1].reshape(-1, *self.rnn_states.shape[3:])
+        rnn_states_critic = self.rnn_states_critic[:-1].reshape(
+            -1, *self.rnn_states_critic.shape[3:]
+        )
+        actions = self.actions.reshape(-1, self.actions.shape[-1])
+        if self.action_masks is not None:
+            action_masks = self.action_masks[:-1].reshape(
+                -1, self.action_masks.shape[-1]
+            )
+        value_preds = self.value_preds[:-1].reshape(-1, 1)
+        returns = self.returns[:-1].reshape(-1, 1)
+        masks = self.masks[:-1].reshape(-1, 1)
+        active_masks = self.active_masks[:-1].reshape(-1, 1)
+        action_log_probs = self.action_log_probs.reshape(
+            -1, self.action_log_probs.shape[-1]
+        )
+        if advantages is not None:
+            advantages = advantages.reshape(-1, 1)
+
+        def _create_seq(data, end_idx_list):
+            end_idx_list = np.array(end_idx_list)
+            seq_data = []
+            for seq_idx in reversed(range(self.tf_max_len)):
+                idx = end_idx_list-seq_idx*self.n_rollout_threads*self.num_agents
+                seq_data.append(data[idx])
+            return np.stack(seq_data, 1)
+
+        for indices in sampler:
+            # obs size [T+1 N M Dim]-->[T N M Dim]-->[T*N*M,Dim]-->[index,Dim]
+            if self._mixed_obs:
+                raise NotImplementedError
+                critic_obs_batch = {}
+                policy_obs_batch = {}
+                for key in critic_obs.keys():
+                    critic_obs_batch[key] = critic_obs[key][indices]
+                for key in policy_obs.keys():
+                    policy_obs_batch[key] = policy_obs[key][indices]
+            else:
+                critic_obs_batch = _create_seq(critic_obs, indices)
+                policy_obs_batch = _create_seq(policy_obs, indices)
+            env_step = _create_seq(env_step, indices)
+            rnn_states_batch = rnn_states[indices]
+            rnn_states_critic_batch = rnn_states_critic[indices]
+            actions_batch = actions[indices] #_create_seq(actions, indices)
+            if self.action_masks is not None:
+                action_masks_batch = action_masks[indices]
+            else:
+                action_masks_batch = None
+            value_preds_batch = value_preds[indices]
+            return_batch = returns[indices]
+            masks_batch = masks[indices]
+            active_masks_batch = active_masks[indices]
+            old_action_log_probs_batch = action_log_probs[indices]
+            if advantages is None:
+                adv_targ = None
+            else:
+                adv_targ = advantages[indices]
+            if critic_obs_process_func is not None:
+                critic_obs_batch = critic_obs_process_func(critic_obs_batch)
+
+            yield critic_obs_batch, policy_obs_batch, env_step, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
 
     def recurrent_generator_v3(self, advantages, num_mini_batch, data_chunk_length):
         episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]

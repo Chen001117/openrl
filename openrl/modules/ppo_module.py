@@ -107,6 +107,7 @@ class PPOModule(RLModule):
         rnn_states_critic,
         masks,
         action_masks=None,
+        env_step=None,
         deterministic=False,
     ):
         if self.share_model:
@@ -129,21 +130,22 @@ class PPOModule(RLModule):
                 rnn_states_actor,
                 masks,
                 action_masks,
+                env_step,
                 deterministic,
             )
 
             values, rnn_states_critic = self.models["critic"](
-                critic_obs, rnn_states_critic, masks
+                critic_obs, rnn_states_critic, masks, env_step
             )
+
         return values, actions, action_log_probs, rnn_states_actor, rnn_states_critic
 
-    def get_values(self, critic_obs, rnn_states_critic, masks):
+    def get_values(self, critic_obs, rnn_states_critic, masks, env_step=None):
         if self.share_model:
             values, _ = self.models["model"](
-                "get_values", critic_obs, rnn_states_critic, masks
-            )
+                "get_values", critic_obs, rnn_states_critic, masks)
         else:
-            values, _ = self.models["critic"](critic_obs, rnn_states_critic, masks)
+            values, _ = self.models["critic"](critic_obs, rnn_states_critic, masks, env_step)
         return values
 
     def evaluate_actions(
@@ -155,6 +157,7 @@ class PPOModule(RLModule):
         action,
         masks,
         action_masks=None,
+        env_step=None,
         active_masks=None,
         critic_masks_batch=None,
     ):
@@ -177,7 +180,7 @@ class PPOModule(RLModule):
             )
         else:
             values, _ = self.models["critic"](
-                critic_obs, rnn_states_critic, critic_masks_batch
+                critic_obs, rnn_states_critic, critic_masks_batch, env_step
             )
 
             action_log_probs, dist_entropy, policy_values = self.models["policy"](
@@ -187,6 +190,7 @@ class PPOModule(RLModule):
                 action,
                 masks,
                 action_masks,
+                env_step,
                 active_masks,
             )
 

@@ -43,6 +43,8 @@ class PolicyNetwork(BasePolicyNetwork):
         super(PolicyNetwork, self).__init__(cfg, device)
         self.hidden_size = cfg.hidden_size
 
+        self._use_transformer = True
+
         self._gain = cfg.gain
         self._use_orthogonal = cfg.use_orthogonal
         self._activation_id = cfg.activation_id
@@ -58,60 +60,86 @@ class PolicyNetwork(BasePolicyNetwork):
 
         policy_obs_shape = get_policy_obs_space(input_space)
 
-        if "Dict" in policy_obs_shape.__class__.__name__:
-            self._mixed_obs = True
-            self.base = MIXBase(
-                cfg, policy_obs_shape, cnn_layers_params=cfg.cnn_layers_params
+        if self._use_transformer:
+
+            import transformers
+            config = transformers.GPT2Config(
+                n_embd=self.hidden_size,
+                n_positions=1024,
+                n_layer=3,
+                n_head=1,
+                n_inner=128,
+                activation_function="tanh",
+                resid_pdrop=0.,
+                attn_pdrop=0.,
+                embd_pdrop=0.,
             )
+            self.transformer = transformers.GPT2Model(config)
+            # self.transformer = transformers.GPT2Model.from_pretrained(
+            #     'gpt2', config=config
+            # )
+
+            obs_dim = policy_obs_shape[0]
+            self.embed_obs = torch.nn.Linear(obs_dim, self.hidden_size)
+
+            self._mixed_obs = ("Dict" in policy_obs_shape.__class__.__name__)
+        
         else:
-            self._mixed_obs = False
-            self.base = (
-                CNNBase(cfg, policy_obs_shape)
-                if len(policy_obs_shape) == 3
-                else MLPBase(
-                    cfg,
-                    policy_obs_shape,
-                    use_attn_internal=cfg.use_attn_internal,
-                    use_cat_self=True,
+            if "Dict" in policy_obs_shape.__class__.__name__:
+                self._mixed_obs = True
+                self.base = MIXBase(
+                    cfg, policy_obs_shape, cnn_layers_params=cfg.cnn_layers_params
                 )
-            )
-
-        input_size = self.base.output_size
-
-        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            self.rnn = RNNLayer(
-                input_size,
-                self.hidden_size,
-                self._recurrent_N,
-                self._use_orthogonal,
-                rnn_type=cfg.rnn_type,
-            )
-            input_size = self.hidden_size
-
-        if self._use_influence_policy:
-            self.mlp = MLPLayer(
-                policy_obs_shape[0],
-                self.hidden_size,
-                self._influence_layer_N,
-                self._use_orthogonal,
-                self._activation_id,
-            )
-            input_size += self.hidden_size
-
-        self.act = ACTLayer(action_space, input_size, self._use_orthogonal, self._gain)
-
-        if self._use_policy_vhead:
-            init_method = [nn.init.xavier_uniform_, nn.init.orthogonal_][
-                self._use_orthogonal
-            ]
-
-            def init_(m):
-                return init(m, init_method, lambda x: nn.init.constant_(x, 0))
-
-            if self._use_popart:
-                self.v_out = init_(PopArt(input_size, 1, device=device))
             else:
-                self.v_out = init_(nn.Linear(input_size, 1))
+                self._mixed_obs = False
+                self.base = (
+                    CNNBase(cfg, policy_obs_shape)
+                    if len(policy_obs_shape) == 3
+                    else MLPBase(
+                        cfg,
+                        policy_obs_shape,
+                        use_attn_internal=cfg.use_attn_internal,
+                        use_cat_self=True,
+                    )
+                )
+
+            input_size = self.base.output_size
+
+            if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+                self.rnn = RNNLayer(
+                    input_size,
+                    self.hidden_size,
+                    self._recurrent_N,
+                    self._use_orthogonal,
+                    rnn_type=cfg.rnn_type,
+                )
+                input_size = self.hidden_size
+
+            if self._use_influence_policy:
+                self.mlp = MLPLayer(
+                    policy_obs_shape[0],
+                    self.hidden_size,
+                    self._influence_layer_N,
+                    self._use_orthogonal,
+                    self._activation_id,
+                )
+                input_size += self.hidden_size
+
+            if self._use_policy_vhead:
+                init_method = [nn.init.xavier_uniform_, nn.init.orthogonal_][
+                    self._use_orthogonal
+                ]
+
+                def init_(m):
+                    return init(m, init_method, lambda x: nn.init.constant_(x, 0))
+
+                if self._use_popart:
+                    self.v_out = init_(PopArt(input_size, 1, device=device))
+                else:
+                    self.v_out = init_(nn.Linear(input_size, 1))
+
+        self.act = ACTLayer(action_space, self.hidden_size, self._use_orthogonal, self._gain)
+
         if use_half:
             self.half()
         self.to(device)
@@ -125,7 +153,7 @@ class PolicyNetwork(BasePolicyNetwork):
             raise NotImplementedError
 
     def forward_original(
-        self, raw_obs, rnn_states, masks, action_masks=None, deterministic=False
+        self, raw_obs, rnn_states, masks, action_masks=None, env_step=None, deterministic=False
     ):
         policy_obs = get_policy_obs(raw_obs)
         if self._mixed_obs:
@@ -137,28 +165,48 @@ class PolicyNetwork(BasePolicyNetwork):
             policy_obs = check(policy_obs, self.use_half, self.tpdv)
             # if self.use_half:
             #     obs = obs.half()
-        rnn_states = check(rnn_states, self.use_half, self.tpdv)
-        masks = check(masks, self.use_half, self.tpdv)
+        
+        if self._use_transformer:
+            batch_size, seq_length, _ = policy_obs.shape
+            env_step = env_step.squeeze(-1)
+            env_step = check(env_step, self.use_half, self.tpdv).long()
+            attention_mask = torch.zeros([batch_size, seq_length])
+            attention_mask = check(attention_mask, self.use_half, self.tpdv)
+            for data_id in range(batch_size):
+                attention_mask[data_id,-env_step[data_id,-1]-1:] = 1.
+            actor_features = self.embed_obs(policy_obs)
+            transformer_outputs = self.transformer(
+                inputs_embeds=actor_features,
+                attention_mask=attention_mask,
+                position_ids=env_step,
+            )
+            actor_features = transformer_outputs['last_hidden_state']
+            actor_features = actor_features[:,-1]
+
+        else:
+            rnn_states = check(rnn_states, self.use_half, self.tpdv)
+            masks = check(masks, self.use_half, self.tpdv)
+
+            actor_features = self.base(policy_obs)
+
+            if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+                actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+
+            if self._use_influence_policy:
+                mlp_obs = self.mlp(policy_obs)
+                actor_features = torch.cat([actor_features, mlp_obs], dim=1)
 
         if action_masks is not None:
             action_masks = check(action_masks, self.use_half, self.tpdv)
 
-        actor_features = self.base(policy_obs)
-
-        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
-
-        if self._use_influence_policy:
-            mlp_obs = self.mlp(policy_obs)
-            actor_features = torch.cat([actor_features, mlp_obs], dim=1)
-
         actions, action_log_probs = self.act(
             actor_features, action_masks, deterministic
         )
-        return actions, action_log_probs, rnn_states
+        
+        return actions, action_log_probs, None
 
     def eval_actions(
-        self, obs, rnn_states, action, masks, action_masks=None, active_masks=None
+        self, obs, rnn_states, action, masks, action_masks=None, env_step=None, active_masks=None
     ):
         if self._mixed_obs:
             for key in obs.keys():
@@ -166,24 +214,40 @@ class PolicyNetwork(BasePolicyNetwork):
         else:
             obs = check(obs, self.use_half, self.tpdv)
 
-        rnn_states = check(rnn_states, self.use_half, self.tpdv)
         action = check(action, self.use_half, self.tpdv)
-        masks = check(masks, self.use_half, self.tpdv)
-
         if action_masks is not None:
             action_masks = check(action_masks, self.use_half, self.tpdv)
-
         if active_masks is not None:
             active_masks = check(active_masks, self.use_half, self.tpdv)
 
-        actor_features = self.base(obs)
+        if self._use_transformer:
+            batch_size, seq_length, _ = obs.shape
+            env_step = env_step.squeeze(-1)
+            env_step = check(env_step, self.use_half, self.tpdv).long()
+            attention_mask = torch.zeros([batch_size, seq_length])
+            attention_mask = check(attention_mask, self.use_half, self.tpdv)
+            for data_id in range(batch_size):
+                attention_mask[data_id,-env_step[data_id,-1]-1:] = 1.
+            actor_features = self.embed_obs(obs)
+            transformer_outputs = self.transformer(
+                inputs_embeds=actor_features,
+                attention_mask=attention_mask,
+                position_ids=env_step,
+            )
+            actor_features = transformer_outputs['last_hidden_state']
+            actor_features = actor_features[:,-1]
+        else:
+            rnn_states = check(rnn_states, self.use_half, self.tpdv)
+            masks = check(masks, self.use_half, self.tpdv)
 
-        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+            actor_features = self.base(obs)
 
-        if self._use_influence_policy:
-            mlp_obs = self.mlp(obs)
-            actor_features = torch.cat([actor_features, mlp_obs], dim=1)
+            if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+                actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+
+            if self._use_influence_policy:
+                mlp_obs = self.mlp(obs)
+                actor_features = torch.cat([actor_features, mlp_obs], dim=1)
 
         action_log_probs, dist_entropy = self.act.evaluate_actions(
             actor_features,

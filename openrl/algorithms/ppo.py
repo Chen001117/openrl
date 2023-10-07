@@ -37,6 +37,7 @@ class PPOAlgorithm(BaseAlgorithm):
         agent_num: int = 1,
         device: Union[str, torch.device] = "cpu",
     ) -> None:
+        self._use_transformer = True
         self._use_share_model = cfg.use_share_model
         self.use_joint_action_loss = cfg.use_joint_action_loss
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
@@ -49,6 +50,7 @@ class PPOAlgorithm(BaseAlgorithm):
         (
             critic_obs_batch,
             obs_batch,
+            env_step,
             rnn_states_batch,
             rnn_states_critic_batch,
             actions_batch,
@@ -96,6 +98,7 @@ class PPOAlgorithm(BaseAlgorithm):
             loss_list, value_loss, policy_loss, dist_entropy, ratio = self.prepare_loss(
                 critic_obs_batch,
                 obs_batch,
+                env_step,
                 rnn_states_batch,
                 rnn_states_critic_batch,
                 actions_batch,
@@ -217,6 +220,7 @@ class PPOAlgorithm(BaseAlgorithm):
         self,
         critic_obs_batch,
         obs_batch,
+        env_step,
         rnn_states_batch,
         rnn_states_critic_batch,
         actions_batch,
@@ -254,6 +258,7 @@ class PPOAlgorithm(BaseAlgorithm):
             actions_batch,
             masks_batch,
             action_masks_batch,
+            env_step,
             active_masks_batch,
             critic_masks_batch=critic_masks_batch,
         )
@@ -339,7 +344,11 @@ class PPOAlgorithm(BaseAlgorithm):
         return loss_list, value_loss, policy_loss, dist_entropy, ratio
 
     def get_data_generator(self, buffer, advantages):
-        if self._use_recurrent_policy:
+        if self._use_transformer:
+            data_generator = buffer.transformer_generator(
+                advantages, self.num_mini_batch
+            )
+        elif self._use_recurrent_policy:
             if self.use_joint_action_loss:
                 data_generator = buffer.recurrent_generator_v3(
                     advantages, self.num_mini_batch, self.data_chunk_length
