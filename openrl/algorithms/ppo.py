@@ -42,7 +42,7 @@ class PPOAlgorithm(BaseAlgorithm):
         self.use_joint_action_loss = cfg.use_joint_action_loss
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
         self.train_list = [self.train_ppo]
-        self.tf_max_len = 5
+        self.tf_max_len = 20
 
     def ppo_update(self, sample, turn_on=True):
         for optimizer in self.algo_module.optimizers.values():

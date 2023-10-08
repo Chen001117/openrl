@@ -72,7 +72,7 @@ class ReplayData(object):
 
         self.num_agents = num_agents
 
-        self.tf_max_len = 5
+        self.tf_max_len = 20
 
         # for mixed observation
         if "Dict" in policy_obs_shape.__class__.__name__:

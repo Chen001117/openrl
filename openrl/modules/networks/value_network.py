@@ -61,14 +61,14 @@ class ValueNetwork(BaseValueNetwork):
 
         critic_obs_shape = get_critic_obs_space(input_space)
 
-        self.tf_max_len = 5
+        self.tf_max_len = 20
 
         if self._use_transformer:
 
             import transformers
             config = transformers.GPT2Config(
                 n_embd=self.hidden_size,
-                n_positions=128, # TODO: max_episode_len
+                n_positions=400, # TODO: max_episode_len
                 n_layer=3,
                 n_head=1,
                 n_inner=128,
