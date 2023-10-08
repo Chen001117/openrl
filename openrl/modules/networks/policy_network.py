@@ -60,12 +60,14 @@ class PolicyNetwork(BasePolicyNetwork):
 
         policy_obs_shape = get_policy_obs_space(input_space)
 
+        self.tf_max_len = 5
+
         if self._use_transformer:
 
             import transformers
             config = transformers.GPT2Config(
                 n_embd=self.hidden_size,
-                n_positions=1024,
+                n_positions=128, # TODO: max_episode_length
                 n_layer=3,
                 n_head=1,
                 n_inner=128,
@@ -81,6 +83,7 @@ class PolicyNetwork(BasePolicyNetwork):
 
             obs_dim = policy_obs_shape[0]
             self.embed_obs = torch.nn.Linear(obs_dim, self.hidden_size)
+            self.embed_ln = nn.LayerNorm(self.hidden_size)
 
             self._mixed_obs = ("Dict" in policy_obs_shape.__class__.__name__)
         
@@ -170,11 +173,12 @@ class PolicyNetwork(BasePolicyNetwork):
             batch_size, seq_length, _ = policy_obs.shape
             env_step = env_step.squeeze(-1)
             env_step = check(env_step, self.use_half, self.tpdv).long()
-            attention_mask = torch.zeros([batch_size, seq_length])
+            attention_mask = torch.zeros([batch_size, self.tf_max_len])
             attention_mask = check(attention_mask, self.use_half, self.tpdv)
             for data_id in range(batch_size):
                 attention_mask[data_id,-env_step[data_id,-1]-1:] = 1.
             actor_features = self.embed_obs(policy_obs)
+            actor_features = self.embed_ln(actor_features)
             transformer_outputs = self.transformer(
                 inputs_embeds=actor_features,
                 attention_mask=attention_mask,
@@ -224,11 +228,12 @@ class PolicyNetwork(BasePolicyNetwork):
             batch_size, seq_length, _ = obs.shape
             env_step = env_step.squeeze(-1)
             env_step = check(env_step, self.use_half, self.tpdv).long()
-            attention_mask = torch.zeros([batch_size, seq_length])
+            attention_mask = torch.zeros([batch_size, self.tf_max_len])
             attention_mask = check(attention_mask, self.use_half, self.tpdv)
             for data_id in range(batch_size):
                 attention_mask[data_id,-env_step[data_id,-1]-1:] = 1.
             actor_features = self.embed_obs(obs)
+            actor_features = self.embed_ln(actor_features)
             transformer_outputs = self.transformer(
                 inputs_embeds=actor_features,
                 attention_mask=attention_mask,

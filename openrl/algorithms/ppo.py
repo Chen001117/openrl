@@ -42,6 +42,7 @@ class PPOAlgorithm(BaseAlgorithm):
         self.use_joint_action_loss = cfg.use_joint_action_loss
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
         self.train_list = [self.train_ppo]
+        self.tf_max_len = 5
 
     def ppo_update(self, sample, turn_on=True):
         for optimizer in self.algo_module.optimizers.values():
@@ -383,11 +384,11 @@ class PPOAlgorithm(BaseAlgorithm):
         else:
             advantages = buffer.returns[:-1] - buffer.value_preds[:-1]
 
-        if self._use_adv_normalize:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+        # if self._use_adv_normalize:
+        #     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
-        advantages_copy = advantages.copy()
-        advantages_copy[buffer.active_masks[:-1] == 0.0] = np.nan
+        advantages_copy = advantages.copy()[self.tf_max_len-1:]
+        advantages_copy[buffer.active_masks[self.tf_max_len-1:-1] == 0.0] = np.nan
         mean_advantages = np.nanmean(advantages_copy)
         std_advantages = np.nanstd(advantages_copy)
         advantages = (advantages - mean_advantages) / (std_advantages + 1e-5)

@@ -9,5 +9,8 @@ use_recurrent_policy: true
 use_joint_action_loss: false
 use_valuenorm: true
 use_adv_normalize: true
+ppo_epoch: 5
 data_chunk_length: 5
 wandb_entity: cwz19
+
+use_linear_lr_decay: true
