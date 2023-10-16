@@ -60,7 +60,7 @@ class PolicyNetwork(BasePolicyNetwork):
 
         policy_obs_shape = get_policy_obs_space(input_space)
 
-        self.tf_max_len = 20
+        self.tf_max_len = 60 # cfg.tf_max_len
 
         if self._use_transformer:
 
@@ -70,7 +70,7 @@ class PolicyNetwork(BasePolicyNetwork):
                 n_positions=400, # TODO: max_episode_length
                 n_layer=3,
                 n_head=1,
-                n_inner=128,
+                n_inner=64,
                 activation_function="tanh",
                 resid_pdrop=0.,
                 attn_pdrop=0.,

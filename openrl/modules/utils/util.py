@@ -12,15 +12,19 @@ def get_grad_norm(it):
 
 def update_linear_schedule(optimizer, epoch, total_num_epochs, initial_lr):
     """Decreases the learning rate linearly"""
-    # TODO
-    warmup_episode = 20
+    warmup_episode = 20 # TODO: change the name of the function
     if epoch < warmup_episode:
         lr = (epoch+1) / warmup_episode * initial_lr
     else:
-        lr = initial_lr
+        assert total_num_epochs - warmup_episode >= 1
+        ratio = (epoch-warmup_episode) / (total_num_epochs-warmup_episode)
+        ratio = max(0.1, 0.5*(1+math.cos(math.pi*ratio)))
+        lr = ratio * initial_lr
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
+    print("LR", lr, epoch, total_num_epochs)
     
+    # linear decay
     # lr = initial_lr - (initial_lr * (epoch / float(total_num_epochs)))
     # for param_group in optimizer.param_groups:
     #     param_group["lr"] = lr

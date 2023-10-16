@@ -61,7 +61,7 @@ class ValueNetwork(BaseValueNetwork):
 
         critic_obs_shape = get_critic_obs_space(input_space)
 
-        self.tf_max_len = 20
+        self.tf_max_len = 60 # cfg.tf_max_len
 
         if self._use_transformer:
 
@@ -71,7 +71,7 @@ class ValueNetwork(BaseValueNetwork):
                 n_positions=400, # TODO: max_episode_len
                 n_layer=3,
                 n_head=1,
-                n_inner=128,
+                n_inner=64,
                 activation_function="tanh",
             )
             self.transformer = transformers.GPT2Model(config)

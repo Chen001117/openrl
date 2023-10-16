@@ -75,7 +75,7 @@ class RLModule(BaseModule):
             if self.program_type == "actor":
                 continue
 
-            optimizer = torch.optim.Adam(
+            optimizer = torch.optim.AdamW(
                 model.parameters(),
                 lr=model_cg["lr"],
                 eps=cfg.opti_eps,

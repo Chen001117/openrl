@@ -72,7 +72,7 @@ class ReplayData(object):
 
         self.num_agents = num_agents
 
-        self.tf_max_len = 20
+        self.tf_max_len = 60 # cfg.tf_max_len
 
         # for mixed observation
         if "Dict" in policy_obs_shape.__class__.__name__:
@@ -551,7 +551,7 @@ class ReplayData(object):
             else:
                 critic_obs_batch = _create_seq(critic_obs, indices)
                 policy_obs_batch = _create_seq(policy_obs, indices)
-            env_step = _create_seq(env_step, indices)
+            env_step_batch = _create_seq(env_step, indices)
             rnn_states_batch = rnn_states[indices]
             rnn_states_critic_batch = rnn_states_critic[indices]
             actions_batch = actions[indices] #_create_seq(actions, indices)
@@ -571,7 +571,7 @@ class ReplayData(object):
             if critic_obs_process_func is not None:
                 critic_obs_batch = critic_obs_process_func(critic_obs_batch)
 
-            yield critic_obs_batch, policy_obs_batch, env_step, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
+            yield critic_obs_batch, policy_obs_batch, env_step_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
 
     def recurrent_generator_v3(self, advantages, num_mini_batch, data_chunk_length):
         episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
