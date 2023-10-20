@@ -86,6 +86,13 @@ def make(
             env_fns = make_old_gym_envs(
                 id=id, env_num=env_num, render_mode=convert_render_mode, **kwargs
             )
+        
+        elif id.startswith("navigation"):
+            from openrl.envs.mujoco import make_mujoco_envs
+            
+            env_fns = make_mujoco_envs(
+                id=id, env_num=env_num, render_mode=convert_render_mode, **kwargs
+            )
 
         elif id in gym.envs.registry.keys():
             from openrl.envs.gymnasium import make_gym_envs

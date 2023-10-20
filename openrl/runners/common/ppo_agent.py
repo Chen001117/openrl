@@ -139,10 +139,10 @@ class PPOAgent(RLAgent):
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         assert self.net is not None, "net is None"
         observation = ObsData.prepare_input(observation)
-        if info is not None:
-            action_masks = prepare_action_masks(
-                info, agent_num=self.agent_num, as_batch=True
-            )
+        action_masks = prepare_action_masks(
+            info, agent_num=self.agent_num, as_batch=True
+        )
+        if action_masks is not None:
             action_masks = action_masks.reshape([-1, action_masks.shape[-1]])
         else:
             action_masks = None

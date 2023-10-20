@@ -17,49 +17,27 @@
 """"""
 import numpy as np
 
+from openrl.configs.config import create_config_parser
 from openrl.envs.common import make
 from openrl.modules.common import PPONet as Net
 from openrl.runners.common import PPOAgent as Agent
 
 
 def train():
-    # create environment, set environment parallelism to 9
-    env = make("InvertedPendulum-v4", env_num=9)
+    # create environment
+    env = make("navigation-1", env_num=16, asynchronous=True)
     # create the neural network
-    net = Net(env)
+    cfg_parser = create_config_parser()
+    cfg = cfg_parser.parse_args()
+    net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
-    agent = Agent(net)
+    agent = Agent(net, use_wandb=True)
+    # agent.load("/home/wchen/openrl/examples/mujoco/results/single_agent/best_model/best_model/module.pt")
     # start training, set total number of training steps to 20000
-    agent.train(total_time_steps=30000)
+    agent.train(total_time_steps=30000000)
     env.close()
+    agent.save("./single_agent/")
     return agent
-
-
-def evaluation(agent):
-    # begin to test
-    # Create an environment for testing and set the number of environments to interact with to 9. Set rendering mode to group_human.
-    env = make("InvertedPendulum-v4", render_mode=None, env_num=9, asynchronous=False)
-
-    # The trained agent sets up the interactive environment it needs.
-    agent.set_env(env)
-    # Initialize the environment and get initial observations and environmental information.
-    obs, info = env.reset()
-
-    done = False
-    step = 0
-    totoal_reward = 0
-    while not np.any(done):
-        # Based on environmental observation input, predict next action.
-        action, _ = agent.act(obs, deterministic=True)
-        obs, r, done, info = env.step(action)
-        step += 1
-        if step % 100 == 0:
-            print(f"{step}: reward:{np.mean(r)}")
-        totoal_reward += np.mean(r)
-    env.close()
-    print(f"total reward: {totoal_reward}")
-
 
 if __name__ == "__main__":
     agent = train()
-    evaluation(agent)
