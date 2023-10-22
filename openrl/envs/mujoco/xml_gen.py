@@ -11,7 +11,7 @@ def get_xml(dog_num=1, obs_num=1, anchor_id=None, load_mass=None, cable_len=None
 
   <worldbody>
     <light cutoff="100" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1"/>
-    <geom condim="3" friction="1. 0.005 0.001" name="floor" pos="0 0 0" rgba="0.8 0.9 0.8 1" size="5.2 5.2 5" type="plane" material="MatPlane"/>
+    <geom condim="3" friction="1. 0.005 0.001" name="floor" pos="0 0 0" rgba="0.8 0.9 0.8 1" size="10.2 10.2 5" type="plane" material="MatPlane"/>
     
     <body name="load" pos="0 0 0.35">
       <site name="load" pos="0 0 0"/>
@@ -162,7 +162,7 @@ def get_xml(dog_num=1, obs_num=1, anchor_id=None, load_mass=None, cable_len=None
     <texture type="skybox" builtin="gradient" rgb1=".4 .5 .6" rgb2="0 0 0" width="100" height="100"/>
     <texture builtin="flat" height="1278" mark="cross" markrgb="1 1 1" name="texgeom" random="0.01" rgb1="0.8 0.6 0.4" rgb2="0.8 0.6 0.4" type="cube" width="127"/>
     <texture builtin="checker" height="100" name="texplane" rgb1="0 0 0" rgb2="0.8 0.8 0.8" type="2d" width="100"/>
-    <material name="MatPlane" reflectance="0.5" shininess="1" specular="1" texrepeat="5 5" texture="texplane"/>
+    <material name="MatPlane" reflectance="0.5" shininess="1" specular="1" texrepeat="10.2 10.2" texture="texplane"/>
     <material name="geom" texture="texgeom" texuniform="true"/>
   </asset>
 

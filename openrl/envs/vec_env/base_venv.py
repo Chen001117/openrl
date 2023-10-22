@@ -162,6 +162,10 @@ class BaseVecEnv(
 
         :param mode: the rendering type
         """
+        
+        self.envs[0].render(mode)
+        return 
+        
         try:
             imgs = self._get_images()
         except NotImplementedError:
