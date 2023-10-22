@@ -20,10 +20,12 @@ class NavigationEnv(BaseEnv):
         
         # ablation
         self._re_order = True
-        self._use_priveledge_info = True
+        self._use_priveledge_info = False
         self._filter_prob = 0.5
 
         # hyper params:
+        self._stucked_num = 50 # stucked steps
+        self._stuck_threshold = 0.1 # m
         self._reach_threshold = 1. # m
         self._num_agents = num_agents # number of agents
         self._num_obstacles = 30 # number of obstacles
@@ -106,6 +108,7 @@ class NavigationEnv(BaseEnv):
         self._inverse_order = np.argsort(self._order)
         # reset simulator
         self._t = 0.
+        self._hist_load_pos = np.zeros([self._stucked_num, 2]) - 100
         self._reset_simulator()
         # get rl info
         observation = self._get_obs()
@@ -307,11 +310,20 @@ class NavigationEnv(BaseEnv):
         # out of time
         if self._t > self._max_time:
             return True
+        # stucked
+        load_pos = self._get_state("load")[:,:2]
+        load_move = np.linalg.norm(load_pos[0]-self._hist_load_pos[-1])
+        if load_move < self._stuck_threshold:
+            load_dist = np.linalg.norm(load_pos-self._goal)
+            if load_dist > self._reach_threshold:
+                return True
         return False
 
     def _post_update(self):
         load_pos = self._get_state("load")[:,:2]
         self._last_load_dist = np.linalg.norm(load_pos-self._goal)
+        self._hist_load_pos[1:] = self._hist_load_pos[:-1]
+        self._hist_load_pos[0] = load_pos
 
     # return x ~ U[-0.5*scale, 0.5*scale]
     def _rand(self, scale, size=None):

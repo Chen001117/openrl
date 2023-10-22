@@ -209,7 +209,10 @@ class RLAgent(BaseAgent):
                     dtype=torch.float32, device=torch.device("cpu")
                 )
         else:
-            self.net.module = torch.load(path)
+            loaded_model = torch.load(path).models["policy"].state_dict()
+            origin_model = self.net.module.models["policy"]
+            origin_model.load_state_dict(loaded_model)
+            print("load model from ", path)
         self.net.reset()
 
     def load_policy(self, path: Union[str, pathlib.Path, io.BufferedIOBase]) -> None:

@@ -25,18 +25,18 @@ from openrl.runners.common import PPOAgent as Agent
 
 def train():
     # create environment
-    env = make("navigation-1", env_num=16, asynchronous=True)
+    env = make("navigation-3", env_num=16, asynchronous=True)
     # create the neural network
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
     net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
     agent = Agent(net, use_wandb=True)
-    # agent.load("/home/wchen/openrl/examples/mujoco/results/single_agent/best_model/best_model/module.pt")
+    agent.load("/home/wchen/openrl/examples/mujoco/two_agent_result/module.pt")
     # start training, set total number of training steps to 20000
     agent.train(total_time_steps=30000000)
     env.close()
-    agent.save("./single_agent/")
+    agent.save("./3_agent/")
     return agent
 
 if __name__ == "__main__":
