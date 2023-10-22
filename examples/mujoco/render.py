@@ -51,7 +51,8 @@ def evaluation():
             obs, r, done, info = env.step(action)
             step += 1
             total_reward += np.mean(r)
-        print(f"total_reward: {total_reward}")
+        final_dist = info[0]["final_info"]["final_dist"]
+        print(f"total_reward: {total_reward}, final_distance: {final_dist}")
         env.close()
 
 

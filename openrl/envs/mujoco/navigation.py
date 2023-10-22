@@ -21,10 +21,10 @@ class NavigationEnv(BaseEnv):
         # ablation
         self._re_order = True
         self._use_priveledge_info = False
-        self._filter_prob = 0.5
+        self._filter_prob = 0.95
 
         # hyper params:
-        self._stucked_num = 50 # stucked steps
+        self._stucked_num = 100 # stucked steps
         self._stuck_threshold = 0.1 # m
         self._reach_threshold = 1. # m
         self._num_agents = num_agents # number of agents
@@ -161,14 +161,16 @@ class NavigationEnv(BaseEnv):
             dist = np.linalg.norm(dist, axis=-1).min()
         # astar search
         # astar_path = self._astar_search(init_load_pos, self._goal, init_obstacles_pos) # TODO
-        astar_path = np.arange(self._num_astar_nodes).reshape([self._num_astar_nodes,1]) / (self._num_astar_nodes-1)
+        astar_path = np.arange(self._num_astar_nodes)
+        astar_path = astar_path.reshape([self._num_astar_nodes,1])
+        astar_path = astar_path / (self._num_astar_nodes-1.)
         astar_path = init_load_pos + (self._goal-init_load_pos) * astar_path
         if astar_path is None:
             return self._reset_simulator()
         # filter simple path
         dist = np.expand_dims(astar_path, 0) - np.expand_dims(init_obstacles_pos, 1)
         dist = np.linalg.norm(dist, axis=-1)
-        if dist.min() < 0.8 and np.random.rand() < self._filter_prob:
+        if dist.min() > 0.8 and np.random.rand() < self._filter_prob:
             return self._reset_simulator()
         # set state
         qpos = self.sim.data.qpos.copy()
@@ -184,7 +186,7 @@ class NavigationEnv(BaseEnv):
             if terminated:
                 return self._reset_simulator()
         dist = np.linalg.norm(self._goal-init_load_pos, axis=-1)[0]
-        self._max_time = dist * 8 + 10
+        self._max_time = dist * 5 + 5
     
     def _do_simulation(self, action, num_frame_skip, add_time=True):
         for i in range(num_frame_skip):
@@ -291,6 +293,7 @@ class NavigationEnv(BaseEnv):
         info = {
             "dense": rewards[0],
             "sparse": rewards[1],
+            "final_dist": load_dist,
         }
         rewards = np.array(rewards)
         rewards = np.dot(weight, rewards)
@@ -317,6 +320,21 @@ class NavigationEnv(BaseEnv):
             load_dist = np.linalg.norm(load_pos-self._goal)
             if load_dist > self._reach_threshold:
                 return True
+        # load rope contact done
+        load_pos = self._get_state("load")[:,:2]
+        load_yaw = self._get_state("load")[:,2]
+        robot_pos = self._get_state("robot")[:,:2]
+        anchor_yaw = self._anchor_id * np.pi/2 + load_yaw
+        anchor_pos = np.stack([
+            np.cos(anchor_yaw)*self._load_size[0]/2+load_pos[:,0],
+            np.sin(anchor_yaw)*self._load_size[1]/2+load_pos[:,1],
+        ], axis=-1)
+        anchor2robot = robot_pos - anchor_pos
+        anchor2robot_yaw = np.arctan2(anchor2robot[:,1], anchor2robot[:,0])
+        cos_dist = np.cos(anchor2robot_yaw)*np.cos(anchor_yaw)
+        cos_dist += np.sin(anchor2robot_yaw)*np.sin(anchor_yaw)
+        if cos_dist < 0:
+            return True
         return False
 
     def _post_update(self):
