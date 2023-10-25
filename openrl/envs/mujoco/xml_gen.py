@@ -11,7 +11,7 @@ def get_xml(dog_num=1, obs_num=1, anchor_id=None, load_mass=None, cable_len=None
 
   <worldbody>
     <light cutoff="100" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1"/>
-    <geom condim="3" friction="1. 0.005 0.001" name="floor" pos="0 0 0" rgba="0.8 0.9 0.8 1" size="10.2 10.2 5" type="plane" material="MatPlane"/>
+    <geom condim="3" friction="1. 0.005 0.001" name="floor" pos="0 0 0" rgba="0.8 0.9 0.8 1" size="5.2 5.2 5" type="plane" material="MatPlane"/>
     
     <body name="load" pos="0 0 0.35">
       <site name="load" pos="0 0 0"/>
@@ -74,29 +74,29 @@ def get_xml(dog_num=1, obs_num=1, anchor_id=None, load_mass=None, cable_len=None
     
     strings += \
     """
-    <body name="wall0" pos="0 10.1 0.5">
+    <body name="wall0" pos="0 5.1 0.5">
       <joint axis="1 0 0" limited="false" name="wall0_axisx" pos="0 0 0" type="slide"/>
       <joint axis="0 1 0" limited="false" name="wall0_axisy" pos="0 0 0" type="slide"/>
       <joint axis="0 0 1" limited="false" name="wall0_axisz" pos="0 0 0" type="slide"/>
-      <geom mass="10000" size="10. 0.2 0.5" name="wall0" type="box" rgba="0. 0. 1. 1"/>
+      <geom mass="10000" size="5. 0.2 0.5" name="wall0" type="box" rgba="0. 0. 1. 1"/>
     </body>
-    <body name="wall1" pos="0 -10.1 0.5">
+    <body name="wall1" pos="0 -5.1 0.5">
       <joint axis="1 0 0" limited="false" name="wall1_axisx" pos="0 0 0" type="slide"/>
       <joint axis="0 1 0" limited="false" name="wall1_axisy" pos="0 0 0" type="slide"/>
       <joint axis="0 0 1" limited="false" name="wall1_axisz" pos="0 0 0" type="slide"/>
-      <geom mass="10000" size="10. 0.2 0.5" name="wall1" type="box" rgba="0. 0. 1. 1"/>
+      <geom mass="10000" size="5. 0.2 0.5" name="wall1" type="box" rgba="0. 0. 1. 1"/>
     </body>
-    <body name="wall2" pos="10.1 0 0.5">
+    <body name="wall2" pos="5.1 0 0.5">
       <joint axis="1 0 0" limited="false" name="wall2_axisx" pos="0 0 0" type="slide"/>
       <joint axis="0 1 0" limited="false" name="wall2_axisy" pos="0 0 0" type="slide"/>
       <joint axis="0 0 1" limited="false" name="wall2_axisz" pos="0 0 0" type="slide"/>
-      <geom mass="10000" size="0.2 10. 0.5" name="wall2" type="box" rgba="0. 0. 1. 1"/>
+      <geom mass="10000" size="0.2 5. 0.5" name="wall2" type="box" rgba="0. 0. 1. 1"/>
     </body>
-    <body name="wall3" pos="-10.1 0 0.5">
+    <body name="wall3" pos="-5.1 0 0.5">
       <joint axis="1 0 0" limited="false" name="wall3_axisx" pos="0 0 0" type="slide"/>
       <joint axis="0 1 0" limited="false" name="wall3_axisy" pos="0 0 0" type="slide"/>
       <joint axis="0 0 1" limited="false" name="wall3_axisz" pos="0 0 0" type="slide"/>
-      <geom mass="10000" size="0.2 10. 0.5" name="wall3" type="box" rgba="0. 0. 1. 1"/>
+      <geom mass="10000" size="0.2 5. 0.5" name="wall3" type="box" rgba="0. 0. 1. 1"/>
     </body>
     """
 
@@ -162,7 +162,7 @@ def get_xml(dog_num=1, obs_num=1, anchor_id=None, load_mass=None, cable_len=None
     <texture type="skybox" builtin="gradient" rgb1=".4 .5 .6" rgb2="0 0 0" width="100" height="100"/>
     <texture builtin="flat" height="1278" mark="cross" markrgb="1 1 1" name="texgeom" random="0.01" rgb1="0.8 0.6 0.4" rgb2="0.8 0.6 0.4" type="cube" width="127"/>
     <texture builtin="checker" height="100" name="texplane" rgb1="0 0 0" rgb2="0.8 0.8 0.8" type="2d" width="100"/>
-    <material name="MatPlane" reflectance="0.5" shininess="1" specular="1" texrepeat="10.2 10.2" texture="texplane"/>
+    <material name="MatPlane" reflectance="0.5" shininess="1" specular="1" texrepeat="5.2 5.2" texture="texplane"/>
     <material name="geom" texture="texgeom" texuniform="true"/>
   </asset>
 

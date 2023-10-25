@@ -5,7 +5,7 @@ from os import path
 from gymnasium import utils
 from openrl.envs.mujoco.base_env import BaseEnv
 from openrl.envs.mujoco.xml_gen import get_xml
-# from openrl.envs.mujoco.astar import find_path
+from openrl.envs.mujoco.astar import find_path
 from gymnasium.spaces import Box, Tuple, Dict
 import time
 
@@ -16,23 +16,23 @@ class EnvSpec:
 class NavigationEnv(BaseEnv):
     spec = EnvSpec("")
 
-    def __init__(self, num_agents, **kwargs):
+    def __init__(self, num_agents, is_eval, **kwargs):
         
         # ablation
         self._re_order = True
-        self._use_priveledge_info = False
-        self._filter_prob = 0.95
+        self._use_priveledge_info = True
+        self._filter_prob = 0.75
 
         # hyper params:
         self._stucked_num = 100 # stucked steps
         self._stuck_threshold = 0.1 # m
         self._reach_threshold = 1. # m
         self._num_agents = num_agents # number of agents
-        self._num_obstacles = 30 # number of obstacles
+        self._num_obstacles = 10 # number of obstacles
         self._domain_random_scale = 1e-1 # domain randomization scale
         self._measure_random_scale = 1e-2 # measurement randomization scale
         self._num_frame_skip = 10 # 100/frame_skip = decision_freq (Hz)
-        self._map_real_size = 20. # map size (m)
+        self._map_real_size = 10. # map size (m)
         self._warm_step = 2 # warm-up: let everything stable (steps)
         self._num_astar_nodes = 20 # number of nodes for rendering astar path
 
@@ -64,12 +64,13 @@ class NavigationEnv(BaseEnv):
         super().__init__(model, **kwargs)
 
         # RL space
-        local_observation_size = 5+9*5+self._num_obstacles*5+20  
+        self._max_num_agents = 4
+        local_observation_size = 5+7+self._max_num_agents*9+self._num_obstacles*5+20  
         observation_space = Box(
             low=-np.inf, high=np.inf, shape=(local_observation_size,), dtype=np.float64
         )
         
-        global_state_size = 5+9*4+self._num_obstacles*5+20
+        global_state_size = 5+self._max_num_agents*9+self._num_obstacles*5+20
         priviledge_size = 10
         global_state_size = global_state_size+priviledge_size if self._use_priveledge_info else global_state_size
         share_observation_space = Box(
@@ -88,6 +89,7 @@ class NavigationEnv(BaseEnv):
         )
         
         # variables
+        self._is_eval = is_eval
         self._max_time = 1e6
         self._prev_output_vel = np.zeros([self._num_agents, 3])
         bounds = self.model.actuator_ctrlrange.copy()
@@ -156,7 +158,7 @@ class NavigationEnv(BaseEnv):
         # initialize goal
         dist = 0
         while dist < 1.:
-            self._goal = self._rand(self._map_real_size, [1, 2])
+            self._goal = self._rand(self._map_real_size-1, [1, 2])
             dist = np.expand_dims(init_obstacles_pos, 0) - np.expand_dims(self._goal, 1)
             dist = np.linalg.norm(dist, axis=-1).min()
         # astar search
@@ -185,13 +187,20 @@ class NavigationEnv(BaseEnv):
             terminated = self._do_simulation(0, self._num_frame_skip, add_time=False)
             if terminated:
                 return self._reset_simulator()
+        # astar check
+        if self._is_eval:
+            obs_map = self._draw_obs_map(
+                init_obstacles_pos, init_obstacles_yaw, self._obstacle_size[:2]
+            )
+            astar_path = find_path(init_load_pos[0], self._goal[0], obs_map)
+            if astar_path is None:
+                return self._reset_simulator()
         dist = np.linalg.norm(self._goal-init_load_pos, axis=-1)[0]
         self._max_time = dist * 5 + 5
     
     def _do_simulation(self, action, num_frame_skip, add_time=True):
         for i in range(num_frame_skip):
-            terminated = self._get_done()
-            if terminated:
+            if self._get_done():
                 return True
             robot_global_velocity = self._get_state("robot", vel=True)
             local_vel = self._global2local(robot_global_velocity)
@@ -255,9 +264,16 @@ class NavigationEnv(BaseEnv):
         place_holder = np.zeros([1, 9*(4-self._num_agents)])
         robot_state = np.concatenate([robot_state, anchor_state, place_holder], axis=-1)
         robot_state = np.repeat(robot_state, self._num_agents, axis=0)
+        
+        # theta(goal2robot) - phi(robot_yaw)
+        robot_pos = self._get_state("robot")[:,:2] - self._goal
+        theta = np.arctan2(robot_pos[:,1:2], robot_pos[:,0:1])
+        phi = self._get_state("robot")[:,2:3]
+        robot_rotate = np.concatenate([np.cos(theta-phi),np.sin(theta-phi)], axis=-1)
+        
         # get local observation
         local_observation = np.concatenate([
-            load, robot, anchor, obstacle, wall, robot_state
+            load, robot, robot_rotate, anchor, obstacle, wall, robot_state
         ], axis=-1)[self._order]
         # get global state
         global_state = np.concatenate([load, robot_state, obstacle, wall], axis=-1)
@@ -274,6 +290,15 @@ class NavigationEnv(BaseEnv):
         return observation
     
     def _get_reward(self):
+        
+        if self._is_eval:
+            done = self._get_done()
+            load_pos = self._get_state("load")[:,:2]
+            load_dist = np.linalg.norm(load_pos-self._goal)
+            rewards = (load_dist<self._reach_threshold)*done*1.
+            info = {"reach": rewards}
+            return rewards, info
+        
         # weights
         weight = np.array([1., 1.])
         weight = weight / weight.sum()
@@ -441,3 +466,140 @@ class NavigationEnv(BaseEnv):
     @property
     def agent_num(self):
         return self._num_agents
+
+
+
+
+
+
+    
+    def _draw_obs_map(self, box_pos, box_yaw, box_len):
+        """ draw dog/box/obstacle local map
+
+        Args:
+            dog_pos (np.array): size = [2]
+            dog_theta (float): 
+            box_pos (np.array): size = [box_num, 2]
+            box_yaw (np.array): size = [box_num, 1]
+            box_len (np.array): size = [2]
+        """
+        box_len /= 2
+        self.lmlen, self.mlen = 47, 500
+        box_pos = box_pos
+        box_tow, box_ver = self._get_toward(box_yaw)
+        box_rect = self._get_rect(box_pos, box_tow, box_ver, box_len)
+        box_map = np.zeros([self.mlen, self.mlen])
+        min_idx = -self.lmlen*3//2
+        max_idx = self.mlen + self.lmlen*3//2 + 1
+        for rect in box_rect:
+            norm_rect = (rect.copy() / self._map_real_size + .5) * self.mlen
+            norm_rect = norm_rect.astype('long')
+            tmp_map = self._draw_rect(norm_rect, min_idx, max_idx)
+            box_map += tmp_map[-min_idx:self.mlen-min_idx,-min_idx:self.mlen-min_idx]
+        box_map = (box_map!=0) * 1.
+        
+        return box_map
+
+    def _draw_map(self, dog_pos, dog_theta, box_pos, box_yaw, box_len):
+        """ draw dog/box/obstacle local map
+
+        Args:
+            dog_pos (np.array): size = [2]
+            dog_theta (float): 
+            box_pos (np.array): size = [box_num, 2]
+            box_yaw (np.array): size = [box_num, 1]
+            box_len (np.array): size = [2]
+        """
+        box_len /= 2
+        
+        box_pos = box_pos - dog_pos.reshape([1,2])
+        box_tow, box_ver = self._get_toward(box_yaw)
+        box_rect = self._get_rect(box_pos, box_tow, box_ver, box_len)
+        rotate_mat = np.array([[
+            [np.cos(dog_theta), -np.sin(dog_theta)], 
+            [np.sin(dog_theta), np.cos(dog_theta)]
+        ]])
+        box_rect = box_rect @ rotate_mat
+        box_map = np.zeros([self.lmlen, self.lmlen])
+        min_idx = self.mlen//2 - self.lmlen*3//2
+        max_idx = self.mlen//2 + self.lmlen*3//2 + 1
+        for rect in box_rect:
+            norm_rect = (rect.copy() / self.msize + .5) * self.mlen
+            norm_rect = norm_rect.astype('long')
+            m = self._draw_rect(norm_rect, min_idx, max_idx)
+            box_map += \
+                m[0::3,0::3] + m[1::3,0::3] + m[2::3,0::3] + \
+                m[0::3,1::3] + m[1::3,1::3] + m[2::3,1::3] + \
+                m[0::3,2::3] + m[1::3,2::3] + m[2::3,2::3] 
+        box_map = (box_map!=0) * 1.
+        
+        return box_map
+        
+    def _get_toward(self, theta):
+        # theta : [env_num, 1]
+
+        forward = np.zeros([*theta.shape[:-1], 1, 2])
+        vertical = np.zeros([*theta.shape[:-1], 1, 2])
+        forward[...,0] = 1
+        vertical[...,1] = 1
+        cos = np.cos(theta)
+        sin = np.sin(theta)
+        rotate = np.concatenate([cos, sin, -sin, cos], -1)
+        rotate = rotate.reshape([*theta.shape[:-1], 2, 2])
+        forward = forward @ rotate
+        vertical = vertical @ rotate
+        forward = forward.squeeze(-2)
+        vertical = vertical.squeeze(-2)
+
+        return forward, vertical
+    
+    def _get_rect(self, cen, forw, vert, length):
+        '''
+        cen(input): [*shape, 2] 
+        forw(input): [*shape, 2]
+        vert(input): [*shape, 2]
+        length(input): [*shape, 2]
+        vertice(output): [*shape, 4, 2]
+        '''
+
+        vertice = np.stack([
+            cen + forw * length[...,0:1] + vert * length[...,1:2],
+            cen - forw * length[...,0:1] + vert * length[...,1:2],
+            cen - forw * length[...,0:1] - vert * length[...,1:2],
+            cen + forw * length[...,0:1] - vert * length[...,1:2],
+        ], axis=-2)
+        
+        return vertice
+
+    def _draw_rect(self, rect, min_idx, max_idx):
+        
+        # get line function y = ax + b
+        lines = [[rect[i], rect[(i+1)%4]] for i in range(4)]
+        lines = np.array(lines)
+        a = (lines[:,0,1] - lines[:,1,1]) / (lines[:,0,0] - lines[:,1,0])
+        b = lines[:,0,1] - a * lines[:,0,0]
+        # get x,y coor idx
+        length = max_idx - min_idx
+        x_axis = np.arange(length) + .5 + min_idx #[0]
+        y_axis = np.arange(length) + .5 + min_idx #[1]
+        y_map, x_map = np.meshgrid(y_axis, x_axis)
+        if (a > 10).any():
+            x_min = np.min(lines[:,:,0])
+            x_max = np.max(lines[:,:,0])
+            y_min = np.min(lines[:,:,1])
+            y_max = np.max(lines[:,:,1])
+            b_map = (x_map>x_min) & (x_map<x_max) \
+                & (y_map>y_min) & (y_map<y_max)
+            return b_map.astype('long')
+        x_map = np.expand_dims(x_map, 0) 
+        x_map = np.repeat(x_map, 4, 0)
+        y_map = np.expand_dims(y_map, 0) 
+        y_map = np.repeat(y_map, 4, 0)
+        b_map = np.zeros_like(y_map).astype('bool')
+        # fill rect 
+        for i in range(4):
+            b_map[i] = y_map[i] > a[i] * x_map[i] + b[i]
+        b_map[0] = b_map[0] ^ b_map[2]
+        b_map[1] = b_map[1] ^ b_map[3]
+        b_map[0] = b_map[0] & b_map[1]
+        return b_map[0].astype('long')

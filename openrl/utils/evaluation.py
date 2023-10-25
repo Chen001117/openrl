@@ -20,6 +20,7 @@ def evaluate_policy(
     reward_threshold: Optional[float] = None,
     return_episode_rewards: bool = False,
     warn: bool = True,
+    seed: int = 42,
 ) -> Union[
     Tuple[np.ndarray, np.ndarray], Tuple[float, float], Tuple[List[float], List[int]]
 ]:
@@ -92,7 +93,7 @@ def evaluate_policy(
     # get the train_env, and will set it back after evaluation
     train_env = agent.get_env()
     agent.set_env(env)
-    observations, infos = env.reset()
+    observations, infos = env.reset(seed=seed)
     states = None
     episode_starts = np.ones((env.parallel_env_num,), dtype=bool)
 
