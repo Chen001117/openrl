@@ -1,6 +1,6 @@
-seed: 0
-lr: 0 #7e-4
-critic_lr: 0 #7e-4
+seed: 1
+lr: 7e-4
+critic_lr: 7e-4
 episode_length: 1024
 entropy_coef: 0.
 hidden_size: 64
@@ -19,9 +19,9 @@ callbacks:
     args: {
         "eval_env": { "id": "navigation-1-eval","env_num": 8}, # how many envs to set up for evaluation
         "n_eval_episodes": 64, # how many episodes to run for each evaluation
-        "eval_freq": 1, # how often to run evaluation
+        "eval_freq": 12500, # how often to run evaluation
         "log_path": "./results/eval_log_path", # where to save the evaluation results
-        "best_model_save_path": "./results/agent1-big-batch/best_model/", # where to save the best model
+        "best_model_save_path": "./results/test/best_model/", # where to save the best model
         "deterministic": True, # whether to use deterministic action
         "render": False, # whether to render the env
         "asynchronous": True, # whether to run evaluation asynchronously

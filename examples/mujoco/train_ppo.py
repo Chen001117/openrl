@@ -31,8 +31,8 @@ def train():
     cfg = cfg_parser.parse_args()
     net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
-    agent = Agent(net, use_wandb=False)
-    agent.load("/home/wchen/openrl/examples/mujoco/results/agent1-big-batch/best_model/best_model/module.pt")
+    agent = Agent(net, use_wandb=True)
+    # agent.load("/home/wchen/openrl/examples/mujoco/results/agent1-big-batch/best_model/best_model/module.pt")
     # start training, set total number of training steps to 20000
     agent.train(total_time_steps=100000000)
     env.close()

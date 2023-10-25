@@ -189,6 +189,7 @@ class RLAgent(BaseAgent):
             path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
         torch.save(self.net.module, path / "module.pt")
+        torch.save(self.net.module.models["policy"], path / "best_policy.pt")
 
     def load(self, path: Union[str, pathlib.Path, io.BufferedIOBase]) -> None:
         if isinstance(path, str):
@@ -209,9 +210,12 @@ class RLAgent(BaseAgent):
                     dtype=torch.float32, device=torch.device("cpu")
                 )
         else:
-            loaded_model = torch.load(path).models["policy"].state_dict()
-            origin_model = self.net.module.models["policy"]
-            origin_model.load_state_dict(loaded_model)
+            weights = torch.load(path)
+            weights = weights.models["policy"].state_dict()
+            # print(weights["act.action_out.fc_mean.0.bias"])
+            # print(self.net.module.models["policy"].state_dict()["act.action_out.fc_mean.0.bias"])
+            self.net.module.models["policy"].load_state_dict(weights)
+            # print(self.net.module.models["policy"].state_dict()["act.action_out.fc_mean.0.bias"])
             print("load model from ", path)
         self.net.reset()
 

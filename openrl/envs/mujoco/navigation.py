@@ -65,7 +65,7 @@ class NavigationEnv(BaseEnv):
 
         # RL space
         self._max_num_agents = 4
-        local_observation_size = 5+7+self._max_num_agents*9+self._num_obstacles*5+20  
+        local_observation_size = 5+11+self._max_num_agents*9+self._num_obstacles*5+20  
         observation_space = Box(
             low=-np.inf, high=np.inf, shape=(local_observation_size,), dtype=np.float64
         )
@@ -196,7 +196,7 @@ class NavigationEnv(BaseEnv):
             if astar_path is None:
                 return self._reset_simulator()
         dist = np.linalg.norm(self._goal-init_load_pos, axis=-1)[0]
-        self._max_time = dist * 5 + 5
+        self._max_time = dist * 7 + 7
     
     def _do_simulation(self, action, num_frame_skip, add_time=True):
         for i in range(num_frame_skip):

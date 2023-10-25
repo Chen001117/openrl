@@ -184,17 +184,17 @@ def distance_between_fnct(n1: T, n2: T) -> float:
     return np.linalg.norm(n1-n2)
 
 def neighbors_fnct(node: T, map) -> Iterable[T]:
-    self._buffer = 10
+    buffer = 10
     node = np.array([node//500, node%500])
     pre_list = [
-        np.array([node[0]-self._buffer, node[1]-self._buffer]),
-        np.array([node[0]-self._buffer, node[1]+self._buffer]),
-        np.array([node[0]+self._buffer, node[1]-self._buffer]),
-        np.array([node[0]+self._buffer, node[1]+self._buffer]),
-        np.array([node[0]-self._buffer, node[1]]),
-        np.array([node[0], node[1]-self._buffer]),
-        np.array([node[0], node[1]+self._buffer]),
-        np.array([node[0]+self._buffer, node[1]]),
+        np.array([node[0]-buffer, node[1]-buffer]),
+        np.array([node[0]-buffer, node[1]+buffer]),
+        np.array([node[0]+buffer, node[1]-buffer]),
+        np.array([node[0]+buffer, node[1]+buffer]),
+        np.array([node[0]-buffer, node[1]]),
+        np.array([node[0], node[1]-buffer]),
+        np.array([node[0], node[1]+buffer]),
+        np.array([node[0]+buffer, node[1]]),
     ]
     neighbor_list = []
     for node in pre_list:

@@ -248,7 +248,18 @@ class EvalCallback(EventCallback):
                 if self.verbose >= 1:
                     print(f"Success rate: {100 * success_rate:.2f}%")
 
-            if mean_reward > self.best_mean_reward:
+            # latest model
+            self.agent.save(
+                os.path.join(self.best_model_save_path, "latest_model")
+            )
+            with open(
+                os.path.join(self.best_model_save_path, "best_model_info.txt"),
+                "w",
+            ) as f:
+                f.write(f"latest model at step: {self.num_time_steps}\n")
+                f.write(f"latest model reward: {mean_reward}\n")
+            
+            if mean_reward >= self.best_mean_reward:
                 if self.verbose >= 1:
                     print("New best mean reward!")
                 if self.best_model_save_path is not None:
