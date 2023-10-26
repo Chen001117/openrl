@@ -175,8 +175,7 @@ class NavigationEnv(BaseEnv):
         load = np.concatenate([init_load_pos, init_load_yaw, init_load_z], axis=-1).flatten()
         robots = np.concatenate([init_robot_pos, init_robot_yaw, init_robot_z], axis=-1).flatten()
         obstacles = np.concatenate([init_obstacles_pos, init_obstacles_yaw, init_obstacles_z], axis=-1).flatten()
-        qpos[:-self._num_path_render_node*2-12] = np.concatenate([load, robots, obstacles]) 
-        # qpos[-self._num_path_render_node*2:] = self._astar_path.flatten()
+        qpos[:-self._num_path_render_node*2-12] = np.concatenate([load, robots, obstacles])
         self.set_state(qpos, np.zeros_like(qpos))
         # warm-up
         for i in range(self._warm_step):
@@ -194,6 +193,15 @@ class NavigationEnv(BaseEnv):
             return self._reset_simulator()
         self._astar_path[:1] = init_load_pos
         self._astar_path[-1:] = self._goal.copy()
+        # render astar path
+        if self._is_eval:
+            qpos = self.sim.data.qpos.copy()
+            render_path = []
+            for i in range(self._num_path_render_node):
+                idx = i*(len(self._astar_path)-1)/(self._num_path_render_node-1)
+                render_path.append(self._astar_path[int(idx)])
+            qpos[-self._num_path_render_node*2:] = np.array(render_path).flatten()
+            self.set_state(qpos, self.sim.data.qvel)
         # max time
         dist = np.linalg.norm(self._goal-init_load_pos, axis=-1)[0]
         self._max_time = dist * 7 + 7
