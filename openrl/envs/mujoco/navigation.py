@@ -26,7 +26,7 @@ class NavigationEnv(BaseEnv):
         # hyper params:
         self._stucked_num = 100 # stucked steps
         self._stuck_threshold = 0.1 # m
-        self._reach_threshold = 1. # m
+        self._reach_threshold = .75 # m
         self._num_agents = num_agents # number of agents
         self._num_obstacles = 10 # number of obstacles
         self._domain_random_scale = 1e-1 # domain randomization scale
@@ -34,7 +34,8 @@ class NavigationEnv(BaseEnv):
         self._num_frame_skip = 10 # 100/frame_skip = decision_freq (Hz)
         self._map_real_size = 10. # map size (m)
         self._warm_step = 2 # warm-up: let everything stable (steps)
-        self._num_astar_nodes = 20 # number of nodes for rendering astar path
+        self._num_path_render_node = 20 # number of nodes for rendering astar path
+        self._num_straight_path_nodes = 20 # number of nodes for rendering astar path
 
         # simulator params
         self._init_kp = np.array([[2000, 2000, 800]]) # kp for PD controller
@@ -59,18 +60,18 @@ class NavigationEnv(BaseEnv):
             load_mass = self._load_mass,
             cable_len = self._cable_len,
             fric_coef = self._fric_coef,
-            astar_node = self._num_astar_nodes
+            astar_node = self._num_path_render_node
         )
         super().__init__(model, **kwargs)
 
         # RL space
         self._max_num_agents = 4
-        local_observation_size = 5+11+self._max_num_agents*9+self._num_obstacles*5+20  
+        local_observation_size = 3+5+9+self._max_num_agents*9+self._num_obstacles*5+20  
         observation_space = Box(
             low=-np.inf, high=np.inf, shape=(local_observation_size,), dtype=np.float64
         )
         
-        global_state_size = 5+self._max_num_agents*9+self._num_obstacles*5+20
+        global_state_size = 3+5+self._max_num_agents*9+self._num_obstacles*5+20
         priviledge_size = 10
         global_state_size = global_state_size+priviledge_size if self._use_priveledge_info else global_state_size
         share_observation_space = Box(
@@ -110,7 +111,6 @@ class NavigationEnv(BaseEnv):
         self._inverse_order = np.argsort(self._order)
         # reset simulator
         self._t = 0.
-        self._hist_load_pos = np.zeros([self._stucked_num, 2]) - 100
         self._reset_simulator()
         # get rl info
         observation = self._get_obs()
@@ -161,16 +161,12 @@ class NavigationEnv(BaseEnv):
             self._goal = self._rand(self._map_real_size-1, [1, 2])
             dist = np.expand_dims(init_obstacles_pos, 0) - np.expand_dims(self._goal, 1)
             dist = np.linalg.norm(dist, axis=-1).min()
-        # astar search
-        # astar_path = self._astar_search(init_load_pos, self._goal, init_obstacles_pos) # TODO
-        astar_path = np.arange(self._num_astar_nodes)
-        astar_path = astar_path.reshape([self._num_astar_nodes,1])
-        astar_path = astar_path / (self._num_astar_nodes-1.)
-        astar_path = init_load_pos + (self._goal-init_load_pos) * astar_path
-        if astar_path is None:
-            return self._reset_simulator()
-        # filter simple path
-        dist = np.expand_dims(astar_path, 0) - np.expand_dims(init_obstacles_pos, 1)
+        # filter simple tasks
+        straight_path = np.arange(self._num_straight_path_nodes)
+        straight_path = straight_path.reshape([self._num_straight_path_nodes,1])
+        straight_path = straight_path / (self._num_straight_path_nodes-1.)
+        straight_path = init_load_pos + (self._goal-init_load_pos) * straight_path
+        dist = np.expand_dims(straight_path, 0) - np.expand_dims(init_obstacles_pos, 1)
         dist = np.linalg.norm(dist, axis=-1)
         if dist.min() > 0.8 and np.random.rand() < self._filter_prob:
             return self._reset_simulator()
@@ -179,22 +175,26 @@ class NavigationEnv(BaseEnv):
         load = np.concatenate([init_load_pos, init_load_yaw, init_load_z], axis=-1).flatten()
         robots = np.concatenate([init_robot_pos, init_robot_yaw, init_robot_z], axis=-1).flatten()
         obstacles = np.concatenate([init_obstacles_pos, init_obstacles_yaw, init_obstacles_z], axis=-1).flatten()
-        qpos[:-self._num_astar_nodes*2-12] = np.concatenate([load, robots, obstacles]) 
-        qpos[-self._num_astar_nodes*2:] = astar_path.flatten()
+        qpos[:-self._num_path_render_node*2-12] = np.concatenate([load, robots, obstacles]) 
+        # qpos[-self._num_path_render_node*2:] = self._astar_path.flatten()
         self.set_state(qpos, np.zeros_like(qpos))
         # warm-up
         for i in range(self._warm_step):
             terminated = self._do_simulation(0, self._num_frame_skip, add_time=False)
             if terminated:
                 return self._reset_simulator()
-        # astar check
-        if self._is_eval:
-            obs_map = self._draw_obs_map(
-                init_obstacles_pos, init_obstacles_yaw, self._obstacle_size[:2]
-            )
-            astar_path = find_path(init_load_pos[0], self._goal[0], obs_map)
-            if astar_path is None:
-                return self._reset_simulator()
+        # astar
+        obs_map = self._draw_obs_map(
+            init_obstacles_pos, init_obstacles_yaw, self._obstacle_size[:2]
+        )
+        init_load_idx = (init_load_pos[0] / self._map_real_size + .5) * 500
+        init_goal_idx = (self._goal[0] / self._map_real_size + .5) * 500
+        self._astar_path = find_path(init_load_idx, init_goal_idx, obs_map)
+        if self._astar_path is None:
+            return self._reset_simulator()
+        self._astar_path[:1] = init_load_pos
+        self._astar_path[-1:] = self._goal.copy()
+        # max time
         dist = np.linalg.norm(self._goal-init_load_pos, axis=-1)[0]
         self._max_time = dist * 7 + 7
     
@@ -257,26 +257,24 @@ class NavigationEnv(BaseEnv):
         wall = np.concatenate([wall_pos, np.cos(wall_yaw), np.sin(wall_yaw)], axis=-1)
         wall = wall.reshape([1, -1])
         wall = wall.repeat(self._num_agents, axis=0)
-        
+        # get local goal
+        local_goal_pos = self._get_local_goal()
+        local_goal_pos /= self._map_real_size
+        local_goal_pos = self._cart2polar(local_goal_pos)
+        local_goal = local_goal_pos.repeat(self._num_agents, axis=0)
         # get all robots info
         robot_state = robot.copy()[self._order].reshape([1, -1])
         anchor_state = anchor.copy()[self._order].reshape([1, -1])
         place_holder = np.zeros([1, 9*(4-self._num_agents)])
         robot_state = np.concatenate([robot_state, anchor_state, place_holder], axis=-1)
         robot_state = np.repeat(robot_state, self._num_agents, axis=0)
-        
-        # theta(goal2robot) - phi(robot_yaw)
-        robot_pos = self._get_state("robot")[:,:2] - self._goal
-        theta = np.arctan2(robot_pos[:,1:2], robot_pos[:,0:1])
-        phi = self._get_state("robot")[:,2:3]
-        robot_rotate = np.concatenate([np.cos(theta-phi),np.sin(theta-phi)], axis=-1)
-        
+
         # get local observation
         local_observation = np.concatenate([
-            load, robot, robot_rotate, anchor, obstacle, wall, robot_state
+            load, robot, anchor, obstacle, wall, robot_state, local_goal
         ], axis=-1)[self._order]
         # get global state
-        global_state = np.concatenate([load, robot_state, obstacle, wall], axis=-1)
+        global_state = np.concatenate([load, robot_state, obstacle, wall, local_goal], axis=-1)
         # priviledge info
         if self._use_priveledge_info:
             priviledge = self._get_priviledge_info()
@@ -312,7 +310,8 @@ class NavigationEnv(BaseEnv):
         reach_goal = load_dist < self._reach_threshold
         rewards.append(reach_goal*duration*max_speed)
         # dense reward
-        dense_rew = (self._last_load_dist-load_dist)*(1-reach_goal)
+        load_dist = np.linalg.norm(load_pos-self._last_local_goal)
+        dense_rew = (self._last_goal2load_dist-load_dist)*(1-reach_goal)
         rewards.append(dense_rew)
         # calculate reward
         info = {
@@ -338,13 +337,6 @@ class NavigationEnv(BaseEnv):
         # out of time
         if self._t > self._max_time:
             return True
-        # stucked
-        load_pos = self._get_state("load")[:,:2]
-        load_move = np.linalg.norm(load_pos[0]-self._hist_load_pos[-1])
-        if load_move < self._stuck_threshold:
-            load_dist = np.linalg.norm(load_pos-self._goal)
-            if load_dist > self._reach_threshold:
-                return True
         # load rope contact done
         load_pos = self._get_state("load")[:,:2]
         load_yaw = self._get_state("load")[:,2]
@@ -363,11 +355,17 @@ class NavigationEnv(BaseEnv):
         return False
 
     def _post_update(self):
+        # get local goal
         load_pos = self._get_state("load")[:,:2]
-        self._last_load_dist = np.linalg.norm(load_pos-self._goal)
-        self._hist_load_pos[1:] = self._hist_load_pos[:-1]
-        self._hist_load_pos[0] = load_pos
-
+        self._last_local_goal = self._get_local_goal()
+        self._last_goal2load_dist = np.linalg.norm(load_pos-self._last_local_goal)
+    
+    def _get_local_goal(self):
+        load_pos = self._get_state("load")[:,:2]
+        dist = np.linalg.norm(load_pos-self._astar_path, axis=-1)
+        local_goal_idx = min(dist.argmin()+10, len(self._astar_path)-1)
+        return self._astar_path[local_goal_idx:local_goal_idx+1]
+    
     # return x ~ U[-0.5*scale, 0.5*scale]
     def _rand(self, scale, size=None):
         if size is None:
@@ -573,17 +571,16 @@ class NavigationEnv(BaseEnv):
 
     def _draw_rect(self, rect, min_idx, max_idx):
         
-        # get line function y = ax + b
-        lines = [[rect[i], rect[(i+1)%4]] for i in range(4)]
-        lines = np.array(lines)
-        a = (lines[:,0,1] - lines[:,1,1]) / (lines[:,0,0] - lines[:,1,0])
-        b = lines[:,0,1] - a * lines[:,0,0]
-        # get x,y coor idx
+        # get map
         length = max_idx - min_idx
         x_axis = np.arange(length) + .5 + min_idx #[0]
         y_axis = np.arange(length) + .5 + min_idx #[1]
         y_map, x_map = np.meshgrid(y_axis, x_axis)
-        if (a > 10).any():
+        # get line function y = ax + b
+        lines = [[rect[i], rect[(i+1)%4]] for i in range(4)]
+        lines = np.array(lines)
+        # prevent divide by zero
+        if (abs(lines[:,0,0] - lines[:,1,0]) < 1e-6).any():
             x_min = np.min(lines[:,:,0])
             x_max = np.max(lines[:,:,0])
             y_min = np.min(lines[:,:,1])
@@ -591,6 +588,10 @@ class NavigationEnv(BaseEnv):
             b_map = (x_map>x_min) & (x_map<x_max) \
                 & (y_map>y_min) & (y_map<y_max)
             return b_map.astype('long')
+        # get line function y = ax + b
+        a = (lines[:,0,1] - lines[:,1,1]) / (lines[:,0,0] - lines[:,1,0])
+        b = lines[:,0,1] - a * lines[:,0,0]
+        # get x,y coor idx
         x_map = np.expand_dims(x_map, 0) 
         x_map = np.repeat(x_map, 4, 0)
         y_map = np.expand_dims(y_map, 0) 

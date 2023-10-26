@@ -218,6 +218,7 @@ def find_path(
     goal: U,
     obs_map,
     reversePath=False,
+    num_node=20,
 ) -> Union[Iterable[U], None]:
     """A non-class version of the path finding algorithm"""
     start = int(start[0]) * 500 + int(start[1])
@@ -247,9 +248,8 @@ def find_path(
         coor_x = (coor_x / 500 - .5) * 10.
         coor_y = (coor_y / 500 - .5) * 10.
         result.append(np.array([coor_x, coor_y]))
-    result = np.array(result)
     
-    return result
+    return np.array(result)
 
 
 __all__ = ["AStar", "find_path"]

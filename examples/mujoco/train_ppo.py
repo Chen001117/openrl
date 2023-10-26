@@ -25,7 +25,7 @@ from openrl.runners.common import PPOAgent as Agent
 
 def train():
     # create environment
-    env = make("navigation-1", env_num=128, asynchronous=True)
+    env = make("navigation-1", env_num=32, asynchronous=True)
     # create the neural network
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
