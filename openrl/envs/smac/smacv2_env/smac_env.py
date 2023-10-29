@@ -26,7 +26,7 @@ from openrl.envs.smac.smacv2_env.wrapper import StarCraftCapabilityEnvWrapper
 class SMACEnv(gym.Env):
     env_name = "SMAC"
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, is_eval):
         
 
         distribution_config = {

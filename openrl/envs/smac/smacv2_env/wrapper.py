@@ -78,8 +78,8 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
     def get_avail_agent_actions(self, agent_id):
         return self.env.get_avail_agent_actions(agent_id)
 
-    def render(self):
-        return self.env.render()
+    def render(self, mode):
+        return self.env.render(mode)
 
     def step(self, actions):
         return self.env.step(actions)

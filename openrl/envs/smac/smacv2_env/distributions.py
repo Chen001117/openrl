@@ -127,6 +127,7 @@ class WeightedTeamsDistribution(Distribution):
         self.exceptions = config.get("exception_unit_types", set())
         self.rng = default_rng()
         self.env_key = config["env_key"]
+        self.team = None
 
     def _gen_team(self, n_units: int, use_exceptions: bool):
         team = []
@@ -139,9 +140,16 @@ class WeightedTeamsDistribution(Distribution):
             )
             shuffle(team)
         return team
+    
+    def set_team(self, team):
+        self.team = team
 
     def generate(self) -> Dict[str, Dict[str, Any]]:
-        team = self._gen_team(self.n_units, use_exceptions=True)
+        if self.team:
+            team = self.team.copy()
+            shuffle(team)
+        else:
+            team = self._gen_team(self.n_units, use_exceptions=True)
         enemy_team = team.copy()
         if self.n_enemies > self.n_units:
             extra_enemies = self._gen_team(
@@ -150,7 +158,6 @@ class WeightedTeamsDistribution(Distribution):
             enemy_team.extend(extra_enemies)
         elif self.n_enemies < self.n_units:
             enemy_team = enemy_team[:self.n_enemies]
-
         return {
             self.env_key: {
                 "ally_team": team,
