@@ -94,11 +94,49 @@ def evaluation():
     env.close()
 
 
+def evaluation_single():
+    
+    cfg_parser = create_config_parser()
+    cfg = cfg_parser.parse_args()
+    
+    env_num = 1
+    env = make(
+        "10gen_protoss",
+        env_num=env_num,
+        make_custom_envs=make_smac_envs,
+        cfg=cfg,
+        env_wrappers=env_wrappers,
+    )
+    
+    net = Net(env, cfg=cfg, device="cuda")
+    agent = Agent(net, use_wandb=False, project_name="SMAC")
+    agent.load("./results/single/best_model")
+    agent.set_env(env)
+    
+    total_reward = 0
+    done = False
+    images = []
+    obs, info = env.reset(seed=0)
+    image = env.envs[0].env.env.render("rgb_array")
+    images.append(image)    
+    while not np.any(done):
+        action, _ = agent.act(obs, info=info, deterministic=False)
+        obs, r, done, info = env.step(action)
+        image = env.envs[0].env.env.render("rgb_array")
+        images.append(image)
+        total_reward += np.mean(r)
+    
+    imageio.mimsave('result.gif', images[:-1])
+    cv2.imwrite("result.png", images[0])
+
+    env.close()
+
+
 if __name__ == "__main__":
     from absl import flags
 
     FLAGS = flags.FLAGS
     FLAGS([""])
     start = time.time()
-    evaluation()
+    evaluation_single()
     print("time", time.time()-start)

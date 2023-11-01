@@ -49,6 +49,7 @@ class SMACEnv(gym.Env):
         }
 
         self.env = StarCraftCapabilityEnvWrapper(
+            is_eval=is_eval,
             capability_config=distribution_config,
             map_name=cfg.map_name,
             debug=False,

@@ -180,9 +180,13 @@ class EvalCallback(EventCallback):
             if maybe_final_info is not None:
                 if isinstance(maybe_final_info, dict):
                     maybe_is_success  = maybe_final_info.get("battle_won")
+                    dead_allies  = maybe_final_info.get("dead_allies")
+                    assert (dead_allies!=5 and maybe_is_success) or (not maybe_is_success)
                     # maybe_is_success = maybe_final_info.get("is_success")
                 else:
                     maybe_is_success  = maybe_final_info[0].get("battle_won")
+                    dead_allies  = maybe_final_info[0].get("dead_allies")
+                    assert (dead_allies!=5 and maybe_is_success) or (not maybe_is_success)
                     # maybe_is_success = maybe_final_info[0].get("is_success")
                 if maybe_is_success is not None:
                     self._is_success_buffer.append(maybe_is_success)

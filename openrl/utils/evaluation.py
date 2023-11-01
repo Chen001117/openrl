@@ -146,6 +146,8 @@ def evaluate_policy(
 
                     current_rewards[i] = 0
                     current_lengths[i] = 0
+                    agent.net.rnn_states_actor[i] = 0.
+                    agent.net.masks[i] = 0.
 
         # if render:
         #     env.render()
