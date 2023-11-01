@@ -18,7 +18,7 @@ from openrl.envs.common import build_envs
 from openrl.envs.smac.smacv2_env.smac_env import SMACEnv
 
 
-def smac_make(id, render_mode, disable_env_checker, **kwargs):
+def smac_make(id, env_id, render_mode, disable_env_checker, **kwargs):
     
     is_eval = False
     if id[-5:] == "-eval":
@@ -32,7 +32,7 @@ def smac_make(id, render_mode, disable_env_checker, **kwargs):
 
     cfg = cfg_parser.parse_args([])
 
-    env = SMACEnv(cfg=cfg, is_eval=is_eval)
+    env = SMACEnv(cfg=cfg, env_id=env_id, is_eval=is_eval)
 
     return env
 

@@ -2,9 +2,11 @@ from openrl.envs.smac.smacv2_env.distributions import get_distribution
 from openrl.envs.smac.smacv2_env.starcraft2 import StarCraft2Env, CannotResetException
 from openrl.envs.smac.smacv2_env.multiagentenv import MultiAgentEnv
 
+import numpy as np
+import json
 
 class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
-    def __init__(self, **kwargs):
+    def __init__(self, is_eval, env_id, **kwargs):
         self.distribution_config = kwargs["capability_config"]
         self.env_key_to_distribution_map = {}
         self._parse_distribution_config()
@@ -13,6 +15,10 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             self.distribution_config.keys()
             == kwargs["capability_config"].keys()
         ), "Must give distribution config and capability config the same keys"
+        self.env_id = env_id
+        with open("config.json", "r") as f:
+            data = json.load(f)
+        self.all_config = data
 
     def _parse_distribution_config(self):
         for env_key, config in self.distribution_config.items():
@@ -27,9 +33,13 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
 
     def reset(self):
         try:
-            reset_config = {}
-            for distribution in self.env_key_to_distribution_map.values():
-                reset_config = {**reset_config, **distribution.generate()}
+            # reset_config = {}
+            # for distribution in self.env_key_to_distribution_map.values():
+            #     reset_config = {**reset_config, **distribution.generate()}
+            idx = self.env_id * 10 + np.random.randint(10)
+            reset_config = self.all_config[str(idx)]
+            reset_config["ally_start_positions"]["item"] = np.array(reset_config["ally_start_positions"]["item"])
+            reset_config["enemy_start_positions"]["item"] = np.array(reset_config["enemy_start_positions"]["item"])
 
             return self.env.reset(reset_config)
         except CannotResetException as cre:
@@ -95,3 +105,4 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
 
     def close(self):
         return self.env.close()
+         
