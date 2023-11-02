@@ -91,8 +91,8 @@ class SMACEnv(gym.Env):
 
         return {"policy": local_obs, "critic": global_state}, {"action_masks": action_mask}
 
-    def step(self, action):
-        rewards, terminated, infos = self.env.step(action)
+    def step(self, action, extra_data):
+        rewards, terminated, infos = self.env.step(action, extra_data)
         rewards = [[rewards] for _ in range(self.agent_num)] 
         dones = [terminated for _ in range(self.agent_num)]
         

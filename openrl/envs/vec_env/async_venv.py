@@ -300,7 +300,7 @@ class AsyncVectorEnv(BaseVecEnv):
 
         return (deepcopy(self.observations) if self.copy else self.observations), infos
 
-    def _step(self, actions: ActType):
+    def _step(self, actions: ActType, extra_data: Any):
         """Take an action for each parallel environment.
 
         Args:
@@ -309,10 +309,10 @@ class AsyncVectorEnv(BaseVecEnv):
         Returns:
             Batch of (observations, rewards, terminations, truncations, infos)
         """
-        self.step_send(actions)
+        self.step_send(actions, extra_data)
         return self.step_fetch()
 
-    def step_send(self, actions: np.ndarray):
+    def step_send(self, actions: np.ndarray, extra_data: Any):
         """Send the calls to :obj:`step` to each sub-environment.
 
         Args:
@@ -338,7 +338,10 @@ class AsyncVectorEnv(BaseVecEnv):
         actions = iterate_action(self.action_space, actions)
 
         for pipe, action in zip(self.parent_pipes, actions):
-            pipe.send(("step", action))
+            if extra_data is not None:
+                pipe.send(("step", (action, extra_data.copy())))
+            else:
+                pipe.send(("step", (action, None)))
         self._state = AsyncState.WAITING_STEP
 
     def step_fetch(

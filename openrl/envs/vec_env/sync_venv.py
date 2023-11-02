@@ -174,7 +174,7 @@ class SyncVectorEnv(BaseVecEnv):
         )
         return deepcopy(self.observations) if self.copy else self.observations
 
-    def _step(self, actions: ActType):
+    def _step(self, actions: ActType, extra_data: Any):
         """Steps through each of the environments returning the batched results.
 
         Returns:
@@ -186,7 +186,7 @@ class SyncVectorEnv(BaseVecEnv):
         observations, infos = [], []
 
         for i, (env, action) in enumerate(zip(self.envs, _actions)):
-            returns = env.step(action)
+            returns = env.step((action, extra_data))
 
             assert isinstance(
                 returns, tuple

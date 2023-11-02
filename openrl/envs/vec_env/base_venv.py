@@ -109,7 +109,7 @@ class BaseVecEnv(
     ):
         raise NotImplementedError
 
-    def step(self, actions):
+    def step(self, actions, extra_data):
         """
         Step the environments with the given action
 
@@ -117,7 +117,7 @@ class BaseVecEnv(
         :return: observation, reward, done, information
         """
 
-        results = self._step(actions)
+        results = self._step(actions, extra_data)
         self.vector_render()
         return results
 

@@ -161,12 +161,13 @@ class OnPolicyDriver(RLDriver):
                 step
             )
 
+            norm = self.trainer.algo_module.models["critic"].value_normalizer
             extra_data = {
-                "actions": actions,
-                "values": values,
-                "action_log_probs": action_log_probs,
-                "step": step,
-                "buffer": self.buffer,
+                # "actions": actions,
+                "values": norm.denormalize(values),
+                # "action_log_probs": action_log_probs,
+                # "step": step,
+                # "buffer": self.buffer,
             }
 
             obs, rewards, dones, infos = self.envs.step(actions, extra_data)

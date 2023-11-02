@@ -51,15 +51,15 @@ class Monitor(BaseWrapper):
         self.rewards = []
         return self.env.reset(**kwargs)
 
-    def step(self, action: Union[np.ndarray, int]):
+    def step(self, action):
         """
         Step the environment with the given action
 
         :param action: the action
         :return: observation, reward, done, information or observation, reward, terminal, truncated, information
         """
-
-        returns = self.env.step(action)
+        action, extra_data = action
+        returns = self.env.step(action, extra_data)
         if len(returns) == 4:
             done = returns[2]
         elif len(returns) == 5:
