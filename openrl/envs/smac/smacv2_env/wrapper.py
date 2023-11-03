@@ -19,8 +19,8 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
         self.is_eval = is_eval
         with open("config.json", "r") as f:
             data = json.load(f)
-        self.task_potential = np.zeros(10)
-        self.task_times = np.zeros(10)
+        self.task_potential = np.zeros(100)
+        self.task_times = np.zeros(100)
         self.all_config = data
         self.value_list = []
         self.reward_list = []
@@ -42,7 +42,7 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             # for distribution in self.env_key_to_distribution_map.values():
             #     reset_config = {**reset_config, **distribution.generate()}
             if self.is_eval:
-                idx = self.env_id * 10 + np.random.randint(10)
+                idx = self.env_id * 100 + np.random.randint(100)
                 reset_config = self.all_config[str(idx)]
                 reset_config["ally_start_positions"]["item"] = np.array(reset_config["ally_start_positions"]["item"])
                 reset_config["enemy_start_positions"]["item"] = np.array(reset_config["enemy_start_positions"]["item"])
@@ -61,15 +61,25 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
                 self.reward_list = []
                 self.value_list = []
             
-            if (self.task_times<3.).any():
-                prob = np.eye(10)[np.argmin(self.task_times)]
+            if (self.task_times<1.).any():
+                prob = np.eye(100)[np.argmin(self.task_times)]
             else:
-                prob = self.task_potential / self.task_times
-                prob = np.exp(prob*3)/np.exp(prob*3).sum()
-            self.idx = np.random.choice(np.arange(10), p=prob)
+                beta = 0.1
+                rho = 0.3
+                avg_err = self.task_potential / self.task_times
+                rank = np.zeros(100)
+                sorted_idx = np.argsort(avg_err)
+                rank[sorted_idx] = np.arange(100) + 1
+                hs = (1/rank)**(1/beta)
+                ps = hs / hs.sum()
+                hc = self.task_times.sum() - self.task_times
+                pc = hc / hc.sum()
+                prob = (1-rho) * ps + rho * pc
+                
+            self.idx = np.random.choice(np.arange(100), p=prob)
             if self.env_id==0 and self.task_times.sum()%50==0:
                 print("prob", prob)
-            idx = self.env_id * 10 + self.idx
+            idx = self.env_id * 100 + self.idx
             reset_config = self.all_config[str(idx)]
             reset_config["ally_start_positions"]["item"] = np.array(reset_config["ally_start_positions"]["item"])
             reset_config["enemy_start_positions"]["item"] = np.array(reset_config["enemy_start_positions"]["item"])
