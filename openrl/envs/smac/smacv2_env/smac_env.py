@@ -64,13 +64,13 @@ class SMACEnv(gym.Env):
         policy_obs_dim = self.env.get_obs_size()
 
         policy_obs = spaces.Box(
-            low=-np.inf, high=+np.inf, shape=(policy_obs_dim,), dtype=np.float32
+            low=-np.inf, high=+np.inf, shape=(policy_obs_dim+5120,), dtype=np.float32
         )
 
         critic_obs_dim = self.env.get_state_size()
 
         critic_obs = spaces.Box(
-            low=-np.inf, high=+np.inf, shape=(critic_obs_dim,), dtype=np.float32
+            low=-np.inf, high=+np.inf, shape=(critic_obs_dim+5120,), dtype=np.float32
         )
 
         self.agent_num = self.env.n_agents

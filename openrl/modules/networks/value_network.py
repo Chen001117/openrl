@@ -58,6 +58,8 @@ class ValueNetwork(BaseValueNetwork):
         ]
 
         critic_obs_shape = get_critic_obs_space(input_space)
+        critic_obs_shape = critic_obs_shape[0]
+        critic_obs_shape = (critic_obs_shape-5120+self.hidden_size,)
 
         if "Dict" in critic_obs_shape.__class__.__name__:
             self._mixed_obs = True
@@ -79,6 +81,13 @@ class ValueNetwork(BaseValueNetwork):
 
         input_size = self.base.output_size
 
+        self.task_base = MLPBase(
+            cfg,
+            (5120,),
+            use_attn_internal=cfg.use_attn_internal,
+            use_cat_self=True,
+        )
+        
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             self.rnn = RNNLayer(
                 input_size,
@@ -118,7 +127,9 @@ class ValueNetwork(BaseValueNetwork):
         rnn_states = check(rnn_states).to(**self.tpdv)
         masks = check(masks).to(**self.tpdv)
 
-        critic_features = self.base(critic_obs)
+        critic_features = self.task_base(critic_obs[:,:5120])
+        critic_features = torch.cat([critic_features, critic_obs[:,5120:]], -1)
+        critic_features = self.base(critic_features)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             critic_features, rnn_states = self.rnn(critic_features, rnn_states, masks)

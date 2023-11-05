@@ -57,6 +57,8 @@ class PolicyNetwork(BasePolicyNetwork):
         self.tpdv = dict(dtype=torch.float32, device=device)
 
         policy_obs_shape = get_policy_obs_space(input_space)
+        policy_obs_shape = policy_obs_shape[0]
+        policy_obs_shape = (policy_obs_shape-5120+self.hidden_size,)
 
         if "Dict" in policy_obs_shape.__class__.__name__:
             self._mixed_obs = True
@@ -98,6 +100,13 @@ class PolicyNetwork(BasePolicyNetwork):
             )
             input_size += self.hidden_size
 
+        self.task_base = MLPBase(
+            cfg,
+            (5120,),
+            use_attn_internal=cfg.use_attn_internal,
+            use_cat_self=True,
+        )
+        
         self.act = ACTLayer(action_space, input_size, self._use_orthogonal, self._gain)
 
         if self._use_policy_vhead:
@@ -143,7 +152,9 @@ class PolicyNetwork(BasePolicyNetwork):
         if action_masks is not None:
             action_masks = check(action_masks, self.use_half, self.tpdv)
 
-        actor_features = self.base(policy_obs)
+        actor_features = self.task_base(policy_obs[:,:5120])
+        actor_features = torch.cat([actor_features, policy_obs[:,5120:]], -1)
+        actor_features = self.base(actor_features)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
@@ -175,8 +186,10 @@ class PolicyNetwork(BasePolicyNetwork):
 
         if active_masks is not None:
             active_masks = check(active_masks, self.use_half, self.tpdv)
-
-        actor_features = self.base(obs)
+            
+        actor_features = self.task_base(obs[:,:5120])
+        actor_features = torch.cat([actor_features, obs[:,5120:]], -1)
+        actor_features = self.base(actor_features)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)

@@ -17,13 +17,15 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
         ), "Must give distribution config and capability config the same keys"
         self.env_id = env_id
         self.is_eval = is_eval
+        # get reset config 
         with open("config.json", "r") as f:
             data = json.load(f)
-        self.task_potential = np.zeros(100)
-        self.task_times = np.zeros(100)
         self.all_config = data
-        self.value_list = []
-        self.reward_list = []
+        # get task embeding
+        # data = np.load('task.npy')
+        data = np.load('result.npy')
+        self.task_emb = data.copy()
+        del data
 
     def _parse_distribution_config(self):
         for env_key, config in self.distribution_config.items():
@@ -41,61 +43,19 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             # reset_config = {}
             # for distribution in self.env_key_to_distribution_map.values():
             #     reset_config = {**reset_config, **distribution.generate()}
-            if self.is_eval:
-                idx = self.env_id * 100 + np.random.randint(100)
-                reset_config = self.all_config[str(idx)]
-                reset_config["ally_start_positions"]["item"] = np.array(reset_config["ally_start_positions"]["item"])
-                reset_config["enemy_start_positions"]["item"] = np.array(reset_config["enemy_start_positions"]["item"])
-                return self.env.reset(reset_config)
-            if len(self.reward_list) > 0:
-                self.reward_list = np.array(self.reward_list)
-                self.value_list = np.array(self.value_list)
-                return2go = np.zeros_like(self.reward_list)
-                return2go[-1] = self.reward_list[-1]
-                gamma = 0.99
-                for i in range(len(self.reward_list)-2,-1,-1):
-                    return2go[i] = self.reward_list[i] + gamma * return2go[i+1]
-                td_error = ((return2go-self.value_list)**2).mean()
-                self.task_potential[self.idx] += td_error
-                self.task_times[self.idx] += 1.
-                self.reward_list = []
-                self.value_list = []
-            
-            if (self.task_times<1.).any():
-                prob = np.eye(100)[np.argmin(self.task_times)]
-            else:
-                beta = 0.1
-                rho = 0.3
-                avg_err = self.task_potential / self.task_times
-                rank = np.zeros(100)
-                sorted_idx = np.argsort(avg_err)
-                rank[sorted_idx] = np.arange(100) + 1
-                hs = (1/rank)**(1/beta)
-                ps = hs / hs.sum()
-                hc = self.task_times.sum() - self.task_times
-                pc = hc / hc.sum()
-                prob = (1-rho) * ps + rho * pc
-                
-            self.idx = np.random.choice(np.arange(100), p=prob)
-            if self.env_id==0 and self.task_times.sum()%50==0:
-                print("prob", prob)
-            idx = self.env_id * 100 + self.idx
-            reset_config = self.all_config[str(idx)]
+            self.task_idx = self.env_id * 100 + np.random.randint(100)
+            reset_config = self.all_config[str(self.task_idx)]
             reset_config["ally_start_positions"]["item"] = np.array(reset_config["ally_start_positions"]["item"])
             reset_config["enemy_start_positions"]["item"] = np.array(reset_config["enemy_start_positions"]["item"])
-
-            return self.env.reset(reset_config)
+            self.env.reset(reset_config)
+            return self.get_obs(), self.get_state()
         except CannotResetException as cre:
-            # just retry
-            self.reset()
+            raise NotImplementedError
+            # # just retry
+            # self.reset()
 
     def step(self, actions, extra_data=None):
-        reward, terminated, info = self.env.step(actions)
-        if extra_data is not None:
-            value = extra_data["values"][self.env_id][0,0]
-            self.value_list.append(value)
-            self.reward_list.append(reward)
-        return reward, terminated, info
+        return self.env.step(actions)
 
     def __getattr__(self, name):
         if hasattr(self.env, name):
@@ -104,13 +64,20 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             raise AttributeError
 
     def get_obs(self):
-        return self.env.get_obs()
+        obs = self.env.get_obs()
+        task_emb = self.task_emb[self.task_idx:self.task_idx+1]
+        task_emb = np.repeat(task_emb, len(obs), 0)
+        obs = np.concatenate([task_emb, obs], -1)
+        return obs
 
     def get_obs_feature_names(self):
         return self.env.get_obs_feature_names()
 
     def get_state(self):
-        return self.env.get_state()
+        state = self.env.get_state()
+        task_emb = self.task_emb[self.task_idx]
+        state = np.concatenate([task_emb, state], -1)
+        return state
 
     def get_state_feature_names(self):
         return self.env.get_state_feature_names()
