@@ -39,7 +39,7 @@ def train():
     # initialize the trainer
     agent = Agent(net, use_wandb=True, project_name="SMAC")
     # start training, set total number of training steps to 5000000
-    agent.train(total_time_steps=20000000)
+    agent.train(total_time_steps=60000000)
     # agent.train(total_time_steps=2000)
     env.close()
     print("Saving agent to ./ppo_agent/")

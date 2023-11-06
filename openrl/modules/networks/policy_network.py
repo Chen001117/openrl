@@ -77,6 +77,7 @@ class PolicyNetwork(BasePolicyNetwork):
                 embd_pdrop=0.,
             )
             self.transformer = transformers.GPT2Model(config)
+            self.transformer = torch.nn.DataParallel(self.transformer)
             # self.transformer = transformers.GPT2Model.from_pretrained(
             #     'gpt2', config=config
             # )

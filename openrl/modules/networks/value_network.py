@@ -75,6 +75,7 @@ class ValueNetwork(BaseValueNetwork):
                 activation_function="tanh",
             )
             self.transformer = transformers.GPT2Model(config)
+            self.transformer = torch.nn.DataParallel(self.transformer)
             # self.transformer = transformers.GPT2Model.from_pretrained(
             #     'gpt2', config=config
             # )
