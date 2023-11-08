@@ -183,16 +183,17 @@ class NavigationEnv(BaseEnv):
             if terminated:
                 return self._reset_simulator()
         # astar
-        obs_map = self._draw_obs_map(
-            init_obstacles_pos, init_obstacles_yaw, self._obstacle_size[:2]
-        )
-        init_load_idx = (init_load_pos[0] / self._map_real_size + .5) * 500
-        init_goal_idx = (self._goal[0] / self._map_real_size + .5) * 500
-        self._astar_path = find_path(init_load_idx, init_goal_idx, obs_map)
-        if self._astar_path is None:
-            return self._reset_simulator()
-        self._astar_path[:1] = init_load_pos
-        self._astar_path[-1:] = self._goal.copy()
+        if self._is_eval:
+            obs_map = self._draw_obs_map(
+                init_obstacles_pos, init_obstacles_yaw, self._obstacle_size[:2].copy()
+            )
+            init_load_idx = (init_load_pos[0] / self._map_real_size + .5) * 500
+            init_goal_idx = (self._goal[0] / self._map_real_size + .5) * 500
+            self._astar_path = find_path(init_load_idx, init_goal_idx, obs_map)
+            if self._astar_path is None:
+                return self._reset_simulator()
+            self._astar_path[:1] = init_load_pos
+            self._astar_path[-1:] = self._goal.copy()
         # render astar path
         if self._is_eval:
             qpos = self.sim.data.qpos.copy()
@@ -266,10 +267,7 @@ class NavigationEnv(BaseEnv):
         wall = wall.reshape([1, -1])
         wall = wall.repeat(self._num_agents, axis=0)
         # get local goal
-        local_goal_pos = self._get_local_goal()
-        local_goal_pos /= self._map_real_size
-        local_goal_pos = self._cart2polar(local_goal_pos)
-        local_goal = local_goal_pos.repeat(self._num_agents, axis=0)
+        local_goal = np.zeros([self._num_agents, 3])
         # get all robots info
         robot_state = robot.copy()[self._order].reshape([1, -1])
         anchor_state = anchor.copy()[self._order].reshape([1, -1])
@@ -340,7 +338,6 @@ class NavigationEnv(BaseEnv):
             if obj1=="floor" or obj2=="floor":
                 continue
             else:
-                # print("contact with {} and {}".format(obj1, obj2))
                 return True
         # out of time
         if self._t > self._max_time:
@@ -369,10 +366,11 @@ class NavigationEnv(BaseEnv):
         self._last_goal2load_dist = np.linalg.norm(load_pos-self._last_local_goal)
     
     def _get_local_goal(self):
-        load_pos = self._get_state("load")[:,:2]
-        dist = np.linalg.norm(load_pos-self._astar_path, axis=-1)
-        local_goal_idx = min(dist.argmin()+10, len(self._astar_path)-1)
-        return self._astar_path[local_goal_idx:local_goal_idx+1]
+        return self._goal.copy()
+        # load_pos = self._get_state("load")[:,:2]
+        # dist = np.linalg.norm(load_pos-self._astar_path, axis=-1)
+        # local_goal_idx = min(dist.argmin()+10, len(self._astar_path)-1)
+        # return self._astar_path[local_goal_idx:local_goal_idx+1].copy()
     
     # return x ~ U[-0.5*scale, 0.5*scale]
     def _rand(self, scale, size=None):
@@ -409,7 +407,7 @@ class NavigationEnv(BaseEnv):
         else:
             raise NotImplementedError
 
-        return state[:,:3]
+        return state[:,:3].copy()
 
     def _get_toward(self, theta):
         forwards = np.concatenate([np.cos(theta), np.sin(theta)], axis=-1)

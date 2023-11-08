@@ -247,6 +247,7 @@ def find_path(
         coor_x = (coor_x / 500 - .5) * 10.
         coor_y = (coor_y / 500 - .5) * 10.
         result.append(np.array([coor_x, coor_y]))
+        
     
     return np.array(result)
 
