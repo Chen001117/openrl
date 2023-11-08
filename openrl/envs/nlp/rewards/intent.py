@@ -9,25 +9,76 @@ from openrl.supports.opendata.utils.opendata_utils import data_abs_path
 from openrl.supports.opengpu.manager import LocalGPUManager
 
 
+def get_eval_ds_config(offload, stage=0):
+    device = "cpu" if offload else "none"
+    zero_opt_dict = {
+        "stage": stage,
+        "offload_param": {"device": device},
+    }
+    return {
+        "train_batch_size": 28,
+        "train_micro_batch_size_per_gpu": 7,
+        "steps_per_print": 10,
+        "zero_optimization": zero_opt_dict,
+        "fp16": {"enabled": True},
+    }
+
+
 class Intent:
-    def __init__(self, intent_model: str, intent_coeff: float = 1.0) -> None:
+    def __init__(
+        self, intent_model: str, intent_coeff: float = 1.0, use_deepspeed: bool = True
+    ) -> None:
         super().__init__()
 
         self._intent_coeff = intent_coeff
+        self.use_deepspeed = use_deepspeed
+        if intent_model == "builtin_intent":
+            from transformers import GPT2Config, GPT2LMHeadModel
 
-        model_path = data_abs_path(intent_model)
-        self._tokenizer = AutoTokenizer.from_pretrained(intent_model)
-        self._model = AutoModelForSequenceClassification.from_pretrained(model_path)
+            class TestTokenizer:
+                def __call__(
+                    self,
+                    input_texts,
+                    return_tensors="pt",
+                    truncation=True,
+                    padding=True,
+                    max_length=None,
+                ):
+                    class EncodedOutput:
+                        def __init__(self, input_ids, attention_mask):
+                            self.input_ids = input_ids
+                            self.attention_mask = attention_mask
 
-        if torch.cuda.is_available():
-            manager = LocalGPUManager()
-            manager.log_info()
-            self._device = f"cuda:{manager.get_gpu()}"
+                    input_ids = torch.zeros((32), dtype=torch.long)
+                    attention_masks = torch.zeros((32), dtype=torch.long)
+                    return EncodedOutput(input_ids, attention_masks)
+
+            self._tokenizer = TestTokenizer()
+            config = GPT2Config()
+            self._model = GPT2LMHeadModel(config)
+
         else:
-            self._device = "cpu"
-        print("Intent Model choose to use device:{}".format(self._device))
+            model_path = data_abs_path(intent_model)
+            self._tokenizer = AutoTokenizer.from_pretrained(intent_model)
+            self._model = AutoModelForSequenceClassification.from_pretrained(model_path)
 
-        self._model = self._model.to(self._device)
+        if self.use_deepspeed:
+            import deepspeed
+
+            self._model = self._model.to("cuda")
+            ds_config = get_eval_ds_config(offload=True, stage=0)
+            self._model, *_ = deepspeed.initialize(model=self._model, config=ds_config)
+            self._device = "cuda"
+        else:
+            if torch.cuda.is_available():
+                manager = LocalGPUManager()
+                manager.log_info()
+                self._device = f"cuda:{manager.get_gpu()}"
+            else:
+                self._device = "cpu"
+            print("Intent Model choose to use device:{}".format(self._device))
+
+            self._model = self._model.to(self._device)
 
     def __call__(
         self,
@@ -63,6 +114,7 @@ class Intent:
                 input_ids=encoded.input_ids.to(self._device),
                 attention_mask=encoded.attention_mask.to(self._device),
             )
+
             pred_labels = torch.argmax(outputs.logits, dim=1).tolist()
 
         score = (np.array(pred_labels) == np.array(target_intents)) * 1.0
