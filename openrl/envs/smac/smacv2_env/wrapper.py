@@ -2,6 +2,8 @@ from openrl.envs.smac.smacv2_env.distributions import get_distribution
 from openrl.envs.smac.smacv2_env.starcraft2 import StarCraft2Env, CannotResetException
 from openrl.envs.smac.smacv2_env.multiagentenv import MultiAgentEnv
 
+import numpy as np
+import json
 
 class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
     def __init__(self, **kwargs):
@@ -13,6 +15,9 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             self.distribution_config.keys()
             == kwargs["capability_config"].keys()
         ), "Must give distribution config and capability config the same keys"
+        
+        with open("task.json", "r") as f:
+            self.all_config = json.load(f)
 
     def _parse_distribution_config(self):
         for env_key, config in self.distribution_config.items():
@@ -27,14 +32,18 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
 
     def reset(self):
         try:
-            reset_config = {}
-            for distribution in self.env_key_to_distribution_map.values():
-                reset_config = {**reset_config, **distribution.generate()}
-
+            # reset_config = {}
+            # for distribution in self.env_key_to_distribution_map.values():
+            #     reset_config = {**reset_config, **distribution.generate()}
+            self.idx = np.random.randint(800)
+            reset_config = self.all_config[str(self.idx)]
+            reset_config["ally_start_positions"]["item"] = np.array(reset_config["ally_start_positions"]["item"])
+            reset_config["enemy_start_positions"]["item"] = np.array(reset_config["enemy_start_positions"]["item"])
             return self.env.reset(reset_config)
         except CannotResetException as cre:
-            # just retry
-            self.reset()
+            raise NotImplementedError
+            # # just retry
+            # self.reset()
 
     def __getattr__(self, name):
         if hasattr(self.env, name):
