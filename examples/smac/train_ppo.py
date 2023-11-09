@@ -33,14 +33,13 @@ def train():
     )
 
     # create the neural network
-
     net = Net(env, cfg=cfg, device="cuda")
 
     # initialize the trainer
     agent = Agent(net, use_wandb=True, project_name="SMAC")
-    # start training, set total number of training steps to 5000000
-    agent.train(total_time_steps=10000000)
-    # agent.train(total_time_steps=2000)
+    # start training, set total number of training steps to 10M
+    agent.train(total_time_steps=10100000)
+    
     env.close()
     print("Saving agent to ./ppo_agent/")
     agent.save("./ppo_agent/")

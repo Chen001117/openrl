@@ -68,12 +68,10 @@ def evaluate_policy(
 
     if not is_monitor_wrapped and warn:
         warnings.warn(
-            (
-                "Evaluation environment is not wrapped with a ``Monitor`` wrapper. This"
-                " may result in reporting modified episode lengths and rewards, if"
-                " other wrappers happen to modify these. Consider wrapping environment"
-                " first with ``Monitor`` wrapper."
-            ),
+            "Evaluation environment is not wrapped with a ``Monitor`` wrapper. This"
+            " may result in reporting modified episode lengths and rewards, if"
+            " other wrappers happen to modify these. Consider wrapping environment"
+            " first with ``Monitor`` wrapper.",
             UserWarning,
         )
 
@@ -97,11 +95,11 @@ def evaluate_policy(
     episode_starts = np.ones((env.parallel_env_num,), dtype=bool)
 
     while (episode_counts < episode_count_targets).any():
+
         actions, states = agent.act(
-            observations,
-            infos,
-            deterministic=deterministic,
+            observations, infos, deterministic=deterministic, episode_starts=episode_starts
         )
+        episode_starts = np.zeros((env.parallel_env_num,), dtype=bool)
         observations, rewards, dones, infos = env.step(actions)
         rewards = np.squeeze(rewards, axis=-1)
         current_rewards += rewards
