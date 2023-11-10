@@ -18,6 +18,7 @@
 from typing import Any
 
 import torch
+import numpy as np
 
 from openrl.modules.networks.utils.nlp.causal_policy import CausalLMActorCriticPolicy
 from openrl.utils.util import check_v2 as check
@@ -72,7 +73,7 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
             obs[key] = check(obs[key], self.use_half, self.tpdv)
             if self._use_fp16:
                 obs[key] = obs[key].half()
-        rnn_states = check(rnn_states, self.use_half, self.tpdv)
+        rnn_states = torch.from_numpy(rnn_states) if type(rnn_states) == np.ndarray else rnn_states
 
         past_model_kwargs = None
         policy_output, past_model_kwargs = super().get_distribution(
@@ -105,7 +106,7 @@ class PolicyValueNetworkGPT(CausalLMActorCriticPolicy):
             obs[key] = check(obs[key], self.use_half, self.tpdv)
             if self._use_fp16:
                 obs[key] = obs[key].half()
-        rnn_states = check(rnn_states, self.use_half, self.tpdv)
+        rnn_states = torch.from_numpy(rnn_states) if type(rnn_states) == np.ndarray else rnn_states
 
         value_output = super().forward_value(obs)
         values = value_output.values
