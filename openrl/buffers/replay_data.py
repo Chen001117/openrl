@@ -159,15 +159,25 @@ class ReplayData(object):
             self.action_masks = None
 
         act_shape = get_shape_from_act_space(act_space)
-
-        self.actions = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
-            dtype=np.float32,
-        )
-        self.action_log_probs = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
-            dtype=np.float32,
-        )
+        
+        if act_space.__class__.__name__ == "MultiDiscrete":
+            self.actions = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, act_space.shape[0]),
+                dtype=np.float32,
+            )
+            self.action_log_probs = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, act_space.shape[0]),
+                dtype=np.float32,
+            )
+        else:
+            self.actions = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+                dtype=np.float32,
+            )
+            self.action_log_probs = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+                dtype=np.float32,
+            )
 
         self.rewards = np.zeros(
             (self.episode_length, self.n_rollout_threads, num_agents, 1),

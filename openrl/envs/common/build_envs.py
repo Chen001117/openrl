@@ -36,6 +36,7 @@ def build_envs(
 
             env = make(
                 id,
+                env_id,
                 render_mode=env_render_mode,
                 disable_env_checker=_disable_env_checker,
                 **new_kwargs,

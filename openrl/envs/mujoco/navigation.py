@@ -6,7 +6,7 @@ from gymnasium import utils
 from openrl.envs.mujoco.base_env import BaseEnv
 from openrl.envs.mujoco.xml_gen import get_xml
 from openrl.envs.mujoco.astar import find_path
-from gymnasium.spaces import Box, Tuple, Dict
+from gymnasium.spaces import Box, Tuple, Dict, MultiDiscrete
 import time
 
 @dataclass
@@ -16,7 +16,10 @@ class EnvSpec:
 class NavigationEnv(BaseEnv):
     spec = EnvSpec("")
 
-    def __init__(self, num_agents, is_eval, **kwargs):
+    def __init__(self, num_agents, is_eval, env_id, **kwargs):
+        
+        self.env_id = env_id
+        np.random.seed(self.env_id)
         
         # ablation
         self._re_order = True
@@ -83,11 +86,7 @@ class NavigationEnv(BaseEnv):
             "critic": share_observation_space,
         })
         
-        action_low = np.array([-0.15, -0.06, -np.pi/10])
-        action_high = np.array([0.55, 0.06, np.pi/10])
-        self.action_space = Box(
-            low=action_low, high=action_high, shape=(3,), dtype=np.float64
-        )
+        self.action_space = MultiDiscrete([11, 3, 11])
         
         # variables
         self._is_eval = is_eval
@@ -121,7 +120,9 @@ class NavigationEnv(BaseEnv):
     
     def step(self, action):
         # step simulator
-        action = np.clip(action, self.action_space.low, self.action_space.high)
+        var = np.array([[0.06, 0.01, 0.006]])
+        mean = np.array([[0.1, 0.025, 0.03]])
+        action = (action * var) - mean
         action = action[self._inverse_order]
         done = self._do_simulation(action, self._num_frame_skip)
         done = [done for _ in range(self._num_agents)]
@@ -178,7 +179,7 @@ class NavigationEnv(BaseEnv):
         qpos[:-self._num_path_render_node*2-12] = np.concatenate([load, robots, obstacles])
         self.set_state(qpos, np.zeros_like(qpos))
         # warm-up
-        for i in range(self._warm_step):
+        for _ in range(self._warm_step):
             terminated = self._do_simulation(0, self._num_frame_skip, add_time=False)
             if terminated:
                 return self._reset_simulator()
@@ -295,14 +296,6 @@ class NavigationEnv(BaseEnv):
     
     def _get_reward(self):
         
-        if self._is_eval:
-            done = self._get_done()
-            load_pos = self._get_state("load")[:,:2]
-            load_dist = np.linalg.norm(load_pos-self._goal)
-            rewards = (load_dist<self._reach_threshold)*done*1.
-            info = {"reach": rewards}
-            return rewards, info
-        
         # weights
         weight = np.array([1., 1.])
         weight = weight / weight.sum()
@@ -310,7 +303,7 @@ class NavigationEnv(BaseEnv):
         rewards = []
         # sparse reward
         duration = self._num_frame_skip / 100
-        max_speed = np.linalg.norm(self.action_space.high[:2])
+        max_speed = 0.5 # np.linalg.norm(self.action_space.high[:2])
         load_pos = self._get_state("load")[:,:2]
         load_dist = np.linalg.norm(load_pos-self._goal)
         reach_goal = load_dist < self._reach_threshold
@@ -324,6 +317,7 @@ class NavigationEnv(BaseEnv):
             "dense": rewards[0],
             "sparse": rewards[1],
             "final_dist": load_dist,
+            "is_success": reach_goal,
         }
         rewards = np.array(rewards)
         rewards = np.dot(weight, rewards)

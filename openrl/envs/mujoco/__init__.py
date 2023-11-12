@@ -6,14 +6,15 @@ from openrl.envs.mujoco.navigation import NavigationEnv
 
 from gymnasium import Env
 
-def make_env(id: str, render_mode, disable_env_checker, **kwargs):
+def make_env(id: str, env_id, render_mode, disable_env_checker, **kwargs):
     if id.startswith("navigation"):
         is_eval = False
         if id[-5:] == "-eval":
             id = id[:-5]
+            env_id += 1000 # TODO
             is_eval = True
         num_agents = int(id[-1])
-        env = NavigationEnv(num_agents=num_agents, is_eval=is_eval)
+        env = NavigationEnv(num_agents=num_agents, is_eval=is_eval, env_id=env_id)
     else:
         raise ValueError("Unknown env {}".format(id))
     return env

@@ -24,7 +24,7 @@ class ACTLayer(nn.Module):
             self.action_out = Bernoulli(inputs_dim, action_dim, use_orthogonal, gain)
         elif action_space.__class__.__name__ == "MultiDiscrete":
             self.multidiscrete_action = True
-            action_dims = action_space.high - action_space.low + 1
+            action_dims = action_space.nvec
             self.action_outs = []
             for action_dim in action_dims:
                 self.action_outs.append(
