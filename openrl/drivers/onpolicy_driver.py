@@ -53,6 +53,8 @@ class OnPolicyDriver(RLDriver):
             logger,
             callback=callback,
         )
+        
+        self.value_norm = self.trainer.algo_module.get_critic_value_normalizer()
 
     def _inner_loop(
         self,
@@ -162,13 +164,13 @@ class OnPolicyDriver(RLDriver):
             )
 
             extra_data = {
-                "actions": actions,
-                "values": values,
-                "action_log_probs": action_log_probs,
-                "step": step,
-                "buffer": self.buffer,
+                # "actions": actions,
+                "values": self.value_norm.denormalize(values),
+                # "action_log_probs": action_log_probs,
+                # "step": step,
+                # "buffer": self.buffer,
             }
-
+            
             obs, rewards, dones, infos = self.envs.step(actions, extra_data)
 
             self.agent.num_time_steps += self.envs.parallel_env_num

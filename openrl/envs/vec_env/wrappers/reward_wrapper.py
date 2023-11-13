@@ -33,9 +33,10 @@ class RewardWrapper(VecEnvWrapper):
             env.call("set_reward", **{"reward_fn": self.reward_class.inner_rew_funcs})
 
     def step(
-        self, action: ActType, extra_data: Optional[Dict[str, Any]]
+        self, action: ActType, extra_data: Optional[Dict[str, Any]] = None
     ) -> Union[Any, np.ndarray, np.ndarray, List[Dict[str, Any]]]:
-        obs, rewards, dones, infos = self.env.step(action)
+        value = extra_data["values"] if extra_data is not None else None
+        obs, rewards, dones, infos = self.env.step(action, value)
 
         if extra_data:
             extra_data.update({"actions": action})
