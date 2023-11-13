@@ -15,11 +15,12 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             == kwargs["capability_config"].keys()
         ), "Must give distribution config and capability config the same keys"
         
+        self.first_time = True
         self._is_eval = is_eval
         
         self.gamma = 0.99
         self.gae_lambda = 0.95
-        self._Nmin = 100
+        self._Nmin = 200
         self._p = 0.5 # prob to choose new task
         self._rho = 0.1 # importance of visit cnt
         self._beta = 0.1
@@ -27,7 +28,8 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
         self._cnt = []
         self._config = []
         
-        self.first_time = True
+        assert self._Nmin > 1
+        
 
     def _parse_distribution_config(self):
         for env_key, config in self.distribution_config.items():
@@ -89,12 +91,13 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
     def step(self, step_inputs):
         actions, values = step_inputs
         reward, terminated, info = self.env.step(actions)
-        if not self._is_eval and self.last_value is not None:
-            target = self.last_reward + self.gamma * values
-            self.td_error += np.abs(target - self.last_value)
-            self.episode_len += 1.
-        self.last_value = values.mean()
-        self.last_reward = reward
+        if not self._is_eval:
+            if self.last_value is not None:
+                target = self.last_reward + self.gamma * values.mean()
+                self.td_error += np.abs(target - self.last_value)
+                self.episode_len += 1.
+            self.last_value = values.mean()
+            self.last_reward = reward
         return reward, terminated, info
 
     def __getattr__(self, name):
