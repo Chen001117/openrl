@@ -19,6 +19,12 @@ from openrl.envs.smac.smacv2_env.smac_env import SMACEnv
 
 
 def smac_make(id, render_mode, disable_env_checker, **kwargs):
+    
+    is_eval = False
+    if id == "10gen_protoss-eval":
+        id = "10gen_protoss"
+        is_eval = True
+    
     cfg_parser = create_config_parser()
     cfg_parser.add_argument(
         "--map_name", type=str, default=id, help="Which smac map to run on"
@@ -26,7 +32,7 @@ def smac_make(id, render_mode, disable_env_checker, **kwargs):
 
     cfg = cfg_parser.parse_args([])
 
-    env = SMACEnv(cfg=cfg)
+    env = SMACEnv(is_eval, cfg=cfg)
 
     return env
 

@@ -4,7 +4,7 @@ from openrl.envs.smac.smacv2_env.multiagentenv import MultiAgentEnv
 
 
 class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
-    def __init__(self, **kwargs):
+    def __init__(self, is_eval, **kwargs):
         self.distribution_config = kwargs["capability_config"]
         self.env_key_to_distribution_map = {}
         self._parse_distribution_config()
@@ -13,6 +13,8 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             self.distribution_config.keys()
             == kwargs["capability_config"].keys()
         ), "Must give distribution config and capability config the same keys"
+        
+        self._is_eval = is_eval
 
     def _parse_distribution_config(self):
         for env_key, config in self.distribution_config.items():
@@ -26,15 +28,10 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             self.env_key_to_distribution_map[env_key] = distribution
 
     def reset(self):
-        try:
-            reset_config = {}
-            for distribution in self.env_key_to_distribution_map.values():
-                reset_config = {**reset_config, **distribution.generate()}
-
-            return self.env.reset(reset_config)
-        except CannotResetException as cre:
-            # just retry
-            self.reset()
+        reset_config = {}
+        for distribution in self.env_key_to_distribution_map.values():
+            reset_config = {**reset_config, **distribution.generate()}
+        return self.env.reset(reset_config)
 
     def __getattr__(self, name):
         if hasattr(self.env, name):
