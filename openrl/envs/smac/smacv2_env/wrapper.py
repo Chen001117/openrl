@@ -17,18 +17,20 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
         
         self.first_time = True
         self._is_eval = is_eval
+        self._use_plr = False
         
-        self.gamma = 0.99
-        self.gae_lambda = 0.95
-        self._Nmin = 200
-        self._p = 0.5 # prob to choose new task
-        self._rho = 0.1 # importance of visit cnt
-        self._beta = 0.1
-        self._score = []
-        self._cnt = []
-        self._config = []
-        
-        assert self._Nmin > 1
+        if self._use_plr:
+            self.gamma = 0.99
+            self.gae_lambda = 0.95
+            self._Nmin = 200
+            self._Nmax = 5000
+            self._p = 0.5 # prob to choose new task
+            self._rho = 0.1 # importance of visit cnt
+            self._beta = 0.1
+            self._score = []
+            self._cnt = []
+            self._config = []
+            assert self._Nmin > 1 and self._Nmin <= self._Nmax
         
 
     def _parse_distribution_config(self):
@@ -43,11 +45,10 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             self.env_key_to_distribution_map[env_key] = distribution
 
     def reset(self):
-        if self._is_eval:
+        if self._is_eval or not self._use_plr:
             reset_config = {}
             for distribution in self.env_key_to_distribution_map.values():
                 reset_config = {**reset_config, **distribution.generate()}
-            self._config_idx = len(self._config)
         else:
             # calculate td error
             if len(self._config) > 0:
@@ -61,6 +62,11 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
                 reset_config = {}
                 for distribution in self.env_key_to_distribution_map.values():
                     reset_config = {**reset_config, **distribution.generate()}
+                if len(self._config) > self._Nmax:
+                    min_idx = np.argsort(np.array(self._score))[0]
+                    del self._config[min_idx]
+                    del self._score[min_idx]
+                    del self._cnt[min_idx]
                 if not self.first_time:
                     self._config_idx = len(self._config)
                     self._config.append(reset_config)
@@ -91,7 +97,7 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
     def step(self, step_inputs):
         actions, values = step_inputs
         reward, terminated, info = self.env.step(actions)
-        if not self._is_eval:
+        if not self._is_eval and self._use_plr:
             if self.last_value is not None:
                 target = self.last_reward + self.gamma * values.mean()
                 self.td_error += np.abs(target - self.last_value)

@@ -3,8 +3,8 @@ seed: 0
 run_dir: ./run_results/
 experiment_name: smac_mappo
 
-lr: 5e-4
-critic_lr: 1e-3
+lr: 5e-3
+critic_lr: 5e-3
 
 data_chunk_length: 8
 
@@ -30,7 +30,7 @@ callbacks:
         "n_eval_episodes": 128, # how many episodes to run for each evaluation
         "eval_freq": 25000, # how often to run evaluation
         "log_path": "./results/eval_log_path", # where to save the evaluation results
-        "best_model_save_path": "./results/PLR-1/", # where to save the best model
+        "best_model_save_path": "./results/lr/", # where to save the best model
         "deterministic": True, # whether to use deterministic action
         "render": False, # whether to render the env
         "asynchronous": True, # whether to run evaluation asynchronously

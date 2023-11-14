@@ -74,6 +74,11 @@ class OnPolicyDriver(RLDriver):
         )
 
         if self.episode % self.log_interval == 0:
+            # get leraning rate
+            optim = self.trainer.algo_module.optimizers["policy"]
+            for param_group in optim.param_groups:
+                lr = param_group["lr"]
+            train_infos.update({"lr": lr})
             # rollout_infos can only be used when env is wrapped with VevMonitor
             self.logger.log_info(rollout_infos, step=self.total_num_steps)
             self.logger.log_info(train_infos, step=self.total_num_steps)

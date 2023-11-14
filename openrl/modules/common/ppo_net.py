@@ -16,6 +16,8 @@
 
 """"""
 
+import copy
+
 from typing import Any, Dict, Optional, Tuple, Union
 
 import gymnasium as gym
@@ -89,7 +91,13 @@ class PPONet(BaseNet):
         observation: Union[np.ndarray, Dict[str, np.ndarray]],
         action_masks: Optional[np.ndarray] = None,
         deterministic: bool = False,
+        episode_starts: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+        
+        episode_starts = \
+            np.repeat(copy.copy(episode_starts), self.env.agent_num)
+        self.rnn_states_actor[episode_starts==True] = 0.
+        
         actions, self.rnn_states_actor = self.module.act(
             obs=observation,
             rnn_states_actor=self.rnn_states_actor,
