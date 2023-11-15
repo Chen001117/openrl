@@ -42,6 +42,12 @@ class Logger:
         log_level: int = logging.DEBUG,
         log_to_terminal: bool = True,
     ) -> None:
+        
+        self.skip_logging = False
+        if cfg.use_deepspeed and cfg.local_rank != 0:
+            self.skip_logging = True
+            return
+        
         # TODO: change these flags to log_backend
         self.use_wandb = use_wandb
         self.use_tensorboard = use_tensorboard
@@ -163,6 +169,10 @@ class Logger:
         infos: Dict[str, Any],
         step: int,
     ) -> None:
+        
+        if self.skip_logging:
+            return
+        
         if not (self.use_wandb or self.use_tensorboard):
             return
         for k, v in infos.items():
@@ -180,6 +190,10 @@ class Logger:
         infos: Dict[str, Any],
         step: int,
     ) -> None:
+        
+        if self.skip_logging:
+            return
+        
         if not (self.use_wandb or self.use_tensorboard or self.log_to_terminal):
             return
         logging_info_str = "\n"

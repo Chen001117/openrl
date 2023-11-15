@@ -7,11 +7,9 @@ use_valuenorm: true
 use_adv_normalize: true
 wandb_entity: "openrl-lab"
 ppo_epoch: 5
-episode_length: 64
+episode_length: 16
 num_mini_batch: 20
-# use_share_model: true
 
-hidden_size: 1
 
 use_deepspeed: true
 use_fp16: false
