@@ -368,9 +368,23 @@ class PPOAlgorithm(BaseAlgorithm):
                 ].module.value_normalizer
             else:
                 value_normalizer = self.algo_module.get_critic_value_normalizer()
-            advantages = buffer.returns[:-1] - value_normalizer.denormalize(
-                buffer.value_preds[:-1]
-            )
+            value_t = value_normalizer.denormalize(buffer.value_preds[:-1])
+            return_t = buffer.returns[:-1]
+
+            # 1
+            value_t = value_t.mean(2, keepdims=True)
+            value_t = np.repeat(value_t, self.agent_num, axis=2)
+            return_t = return_t.mean(2, keepdims=True)
+            return_t = np.repeat(return_t, self.agent_num, axis=2)
+            advantages = return_t - value_t
+
+            # # 2
+            # advantages = return_t - value_t
+            # value_err = np.abs(advantages)#.mean(1, keepdims=True)
+            # min_idx = value_err.argmin(2, keepdims=True)
+            # # min_idx = np.repeat(min_idx, advantages.shape[1], axis=1)
+            # advantages = np.take_along_axis(advantages, min_idx, axis=2)
+            # advantages = np.repeat(advantages, self.agent_num, axis=2)
         else:
             advantages = buffer.returns[:-1] - buffer.value_preds[:-1]
 
@@ -396,9 +410,9 @@ class PPOAlgorithm(BaseAlgorithm):
             train_info["reduced_value_loss"] = 0
             train_info["reduced_policy_loss"] = 0
 
-        for _ in range(self.ppo_epoch):
+        for i in range(self.ppo_epoch):
             data_generator = self.get_data_generator(buffer, advantages)
-
+            # turn_on = True if i%2==0 else False
             for sample in data_generator:
                 (
                     value_loss,

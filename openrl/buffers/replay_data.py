@@ -47,6 +47,9 @@ class ReplayData(object):
         data_client=None,
         episode_length=None,
     ):
+        
+        self.num_agents = num_agents
+        
         if episode_length is None:
             episode_length = cfg.episode_length
         self.episode_length = episode_length
@@ -383,20 +386,24 @@ class ReplayData(object):
                     if (
                         self._use_popart or self._use_valuenorm
                     ) and value_normalizer is not None:
+                        # value_tp1 = value_normalizer.denormalize(self.value_preds[step + 1]).mean(1, keepdims=True)
+                        # value_tp1 = np.repeat(value_tp1, self.num_agents, axis=1)
+                        # value_t = value_normalizer.denormalize(self.value_preds[step]).mean(1, keepdims=True)
+                        # value_t = np.repeat(value_t, self.num_agents, axis=1)
+                        value_tp1 = value_normalizer.denormalize(self.value_preds[step + 1])
+                        value_t = value_normalizer.denormalize(self.value_preds[step])
                         delta = (
                             self.rewards[step]
                             + self.gamma
-                            * value_normalizer.denormalize(self.value_preds[step + 1])
+                            * value_tp1
                             * self.masks[step + 1]
-                            - value_normalizer.denormalize(self.value_preds[step])
+                            - value_t
                         )
                         gae = (
                             delta
                             + self.gamma * self.gae_lambda * self.masks[step + 1] * gae
                         )
-                        self.returns[step] = gae + value_normalizer.denormalize(
-                            self.value_preds[step]
-                        )
+                        self.returns[step] = gae + value_t
                     else:
                         delta = (
                             self.rewards[step]

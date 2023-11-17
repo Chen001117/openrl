@@ -85,7 +85,7 @@ class SMACEnv(gym.Env):
     def reset(self, seed=None, **kwargs):
 
         local_obs, global_state = self.env.reset()
-        global_state = [global_state for _ in range(self.agent_num)]
+        # global_state = [global_state for _ in range(self.agent_num)]
         action_mask = self.env.get_avail_actions()
 
         return {"policy": local_obs, "critic": global_state}, {"action_masks": action_mask}
@@ -97,7 +97,7 @@ class SMACEnv(gym.Env):
         
         local_obs = self.env.get_obs()
         global_state = self.env.get_state()
-        global_state = [global_state for _ in range(self.agent_num)]
+        # global_state = [global_state for _ in range(self.agent_num)]
         action_mask = self.env.get_avail_actions()
         infos.update({
             "action_masks": action_mask,

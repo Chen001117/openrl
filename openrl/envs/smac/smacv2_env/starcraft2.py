@@ -580,6 +580,13 @@ class StarCraft2Env(MultiAgentEnv):
                     60, "*"
                 )
             )
+            
+        self.state_order = []
+        for _ in range(self.n_agents):
+            order = np.arange(self.n_agents)
+            np.random.shuffle(order)
+            self.state_order.append(order)
+            
         return self.get_obs(), self.get_state()
 
     def _restart(self):
@@ -1767,25 +1774,33 @@ class StarCraft2Env(MultiAgentEnv):
             return obs_concat
 
         state_dict = self.get_state_dict()
+        
+        states = []
+        for i in range(self.n_agents):
+            
+            state = np.append(
+                state_dict["allies"][self.state_order[i]].flatten(), 
+                state_dict["enemies"][self.state_order[i]].flatten()
+            )
+            if "last_action" in state_dict:
+                state = np.append(state, state_dict["last_action"][self.state_order[i]].flatten())
+            if "timestep" in state_dict:
+                state = np.append(state, state_dict["timestep"])
 
-        state = np.append(
-            state_dict["allies"].flatten(), state_dict["enemies"].flatten()
-        )
-        if "last_action" in state_dict:
-            state = np.append(state, state_dict["last_action"].flatten())
-        if "timestep" in state_dict:
-            state = np.append(state, state_dict["timestep"])
+            state = state.astype(dtype=np.float32)
 
-        state = state.astype(dtype=np.float32)
+            if self.debug:
+                logging.debug("STATE".center(60, "-"))
+                logging.debug("Ally state {}".format(state_dict["allies"]))
+                logging.debug("Enemy state {}".format(state_dict["enemies"]))
+                if self.state_last_action:
+                    logging.debug("Last actions {}".format(self.last_action))
+            
+            states.append(state)
+        
+        states = np.stack(states, 0)
 
-        if self.debug:
-            logging.debug("STATE".center(60, "-"))
-            logging.debug("Ally state {}".format(state_dict["allies"]))
-            logging.debug("Enemy state {}".format(state_dict["enemies"]))
-            if self.state_last_action:
-                logging.debug("Last actions {}".format(self.last_action))
-
-        return state
+        return states
 
     def get_ally_num_attributes(self):
         return len(self.ally_state_attr_names) + len(

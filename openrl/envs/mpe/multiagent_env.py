@@ -208,11 +208,34 @@ class MultiAgentEnv(gym.Env):
                 "render mode {} not supported".format(self.render_mode)
             )
 
-    @staticmethod
-    def construct_obs(obs_n):
-        critic_obs = (
-            np.concatenate(obs_n, axis=0)[None, ...].copy().repeat(len(obs_n), axis=0)
-        )
+    def construct_obs(self, obs_n):
+        # critic_obs = (
+        #     np.concatenate(obs_n, axis=0)[None, ...].copy().repeat(len(obs_n), axis=0)
+        # )
+        
+        global_state = []
+        for i in range(self.agent_num):
+            obs = np.array(obs_n).copy()
+            order = self.orders[i]
+            for j in range(self.agent_num):
+                remain_idx = order.copy()
+                remain_idx = np.delete(remain_idx, j)
+                new_idx = np.argsort(remain_idx)
+                other_info = obs[j,10:14].reshape([2,2])
+                other_info = other_info[new_idx].flatten()
+                obs[j,10:14] = other_info
+            state = obs[order].flatten()
+            global_state.append(state)
+        critic_obs = np.array(global_state)
+        
+        # states = []
+        # obs = np.array(obs_n)
+        # for i in range(self.agent_num):
+        #     order = self.orders[i]
+        #     state = obs[order].flatten()
+        #     states.append(state)
+        # critic_obs = np.array(states)
+        
         return {
             "policy": obs_n,
             "critic": critic_obs,
@@ -240,6 +263,13 @@ class MultiAgentEnv(gym.Env):
 
         info = {}
         self.deal_render()
+        
+        self.orders = []
+        for _ in range(self.agent_num):
+            order = np.arange(self.agent_num)
+            np.random.shuffle(order)
+            self.orders.append(order)
+        
         return self.construct_obs(obs_n), info
 
     # get info used for benchmarking
