@@ -192,7 +192,7 @@ class PPOModule(RLModule):
 
         return values, action_log_probs, dist_entropy, policy_values
 
-    def act(self, obs, rnn_states_actor, masks, action_masks=None, deterministic=False, episode_starts=None):
+    def act(self, obs, rnn_states_actor, masks, action_masks=None, deterministic=False):
         if self.share_model:
             model = self.models["model"]
         else:
@@ -205,7 +205,6 @@ class PPOModule(RLModule):
             masks,
             action_masks,
             deterministic,
-            episode_starts,
         )
 
         return actions, rnn_states_actor
