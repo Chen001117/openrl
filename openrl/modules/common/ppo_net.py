@@ -18,6 +18,7 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import copy
 import gymnasium as gym
 import numpy as np
 import torch
@@ -52,6 +53,8 @@ class PPONet(BaseNet):
         cfg.num_agents = env.agent_num
         cfg.n_rollout_threads = n_rollout_threads
         cfg.learner_n_rollout_threads = cfg.n_rollout_threads
+        
+        self.num_agents = cfg.num_agents
 
         if cfg.rnn_type == "gru":
             rnn_hidden_size = cfg.hidden_size
@@ -89,7 +92,13 @@ class PPONet(BaseNet):
         observation: Union[np.ndarray, Dict[str, np.ndarray]],
         action_masks: Optional[np.ndarray] = None,
         deterministic: bool = False,
+        episode_starts: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+        
+        if episode_starts is not None:
+            episode_starts = np.repeat(copy.copy(episode_starts), self.num_agents)
+            self.rnn_states_actor[episode_starts] = 0.
+        
         actions, self.rnn_states_actor = self.module.act(
             obs=observation,
             rnn_states_actor=self.rnn_states_actor,
