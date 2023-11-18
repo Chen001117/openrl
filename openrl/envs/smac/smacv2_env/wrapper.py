@@ -2,6 +2,7 @@ from openrl.envs.smac.smacv2_env.distributions import get_distribution
 from openrl.envs.smac.smacv2_env.starcraft2 import StarCraft2Env, CannotResetException
 from openrl.envs.smac.smacv2_env.multiagentenv import MultiAgentEnv
 
+import numpy as np
 
 class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
     def __init__(self, is_eval, **kwargs):
@@ -32,6 +33,17 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
         for distribution in self.env_key_to_distribution_map.values():
             reset_config = {**reset_config, **distribution.generate()}
         self.env.reset(reset_config)
+        
+        self.state_orders = []
+        for _ in range(self.env.n_agents*2):
+            order = np.arange(5)
+            np.random.shuffle(order)
+            self.state_orders.append(order)
+        self.obs_orders = []
+        for _ in range(self.env.n_agents*2):
+            order = np.arange(5)
+            np.random.shuffle(order)
+            self.obs_orders.append(order)
 
     def __getattr__(self, name):
         if hasattr(self.env, name):
@@ -39,20 +51,68 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
         else:
             raise AttributeError
 
+    def get_state(self):
+        
+        state = self.env.get_state()
+        
+        if self.is_eval:
+            state = [[state] for _ in range(self.env.n_agents)]
+            return np.concatenate(state, 0)
+        
+        states = []
+        for order in self.state_orders:
+            ally = state[:40].reshape([5,8])
+            ally = ally[order].flatten()
+            enemy = state[40:75].reshape([5,7])
+            enemy = enemy[order].flatten()
+            act = state[75:].reshape([5,11])
+            act = act[order].flatten()
+            s = np.concatenate([ally, enemy, act])
+            states.append(s)
+        states = np.array(states)
+        
+        return states
+    
     def get_obs(self):
-        return self.env.get_obs()
+        
+        obs = self.env.get_obs()
+        
+        if self.is_eval:
+            return obs
+        
+        obs = np.concatenate([obs, obs])
+        for i, order in enumerate(self.obs_orders):
+            agent_idx = i % self.env.n_agents
+            enemy = obs[i,4:49]
+            enemy = enemy.reshape([self.env.n_agents,9])
+            enemy = enemy[order].flatten()
+            obs[i,4:49] = enemy
+            aorder = order.copy()
+            aorder = np.delete(aorder, np.argwhere(aorder==agent_idx))
+            aorder = np.where(aorder>agent_idx,aorder-1,aorder)
+            ally = obs[i,49:85]
+            ally = ally.reshape([self.env.n_agents-1,9])
+            ally = ally[aorder].flatten()
+            obs[i,49:85] = ally
+        
+        return obs
+    
+    def get_avail_actions(self):
+        
+        action_mask = self.env.get_avail_actions()
+        
+        if self.is_eval:
+            return action_mask
+        
+        action_mask = np.concatenate([action_mask, action_mask])
+        
+        return action_mask
 
     def get_obs_feature_names(self):
         return self.env.get_obs_feature_names()
 
-    def get_state(self):
-        return self.env.get_state()
-
     def get_state_feature_names(self):
         return self.env.get_state_feature_names()
-
-    def get_avail_actions(self):
-        return self.env.get_avail_actions()
 
     def get_env_info(self):
         return self.env.get_env_info()

@@ -42,6 +42,7 @@ class SyncVectorEnv(BaseVecEnv):
         copy: bool = True,
         render_mode: Optional[str] = None,
         auto_reset: bool = True,
+        is_eval: bool = False,
     ):
         """Vectorized environment that serially runs multiple environments.
 
@@ -82,11 +83,12 @@ class SyncVectorEnv(BaseVecEnv):
 
         self._check_spaces()
         self._agent_num = self.envs[0].agent_num
+        self._data_aug_num = self._agent_num * 2
 
         self.observations = create_empty_array(
             self.observation_space,
             n=self.parallel_env_num,
-            agent_num=self._agent_num,
+            agent_num=self._agent_num if is_eval else self._data_aug_num,
             fn=np.zeros,
         )
 
@@ -169,6 +171,7 @@ class SyncVectorEnv(BaseVecEnv):
             return self.format_obs(observations)
 
     def format_obs(self, observations: Iterable) -> Union[tuple, dict, np.ndarray]:
+        
         self.observations = concatenate(
             self.observation_space, observations, self.observations
         )

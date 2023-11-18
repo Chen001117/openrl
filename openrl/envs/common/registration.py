@@ -154,6 +154,7 @@ def make(
             env_fns = make_smac_envs(
                 id=id, env_num=env_num, render_mode=convert_render_mode, **kwargs
             )
+            is_eval = id[-5:] == "-eval"
         elif (
             id in openrl.envs.pettingzoo_all_envs
             or id in openrl.envs.PettingZoo.registration.pettingzoo_env_dict.keys()
@@ -167,9 +168,9 @@ def make(
             raise NotImplementedError(f"env {id} is not supported.")
 
     if asynchronous:
-        env = AsyncVectorEnv(env_fns, render_mode=render_mode, auto_reset=auto_reset)
+        env = AsyncVectorEnv(env_fns, render_mode=render_mode, auto_reset=auto_reset, is_eval=is_eval)
     else:
-        env = SyncVectorEnv(env_fns, render_mode=render_mode, auto_reset=auto_reset)
+        env = SyncVectorEnv(env_fns, render_mode=render_mode, auto_reset=auto_reset, is_eval=is_eval)
 
     reward_class = cfg.reward_class if cfg else None
     reward_class = RewardFactory.get_reward_class(reward_class, env)

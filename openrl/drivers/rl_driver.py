@@ -126,7 +126,7 @@ class RLDriver(BaseDriver, ABC):
             obs = returns
             info = None
         action_masks = prepare_action_masks(
-            info, agent_num=self.num_agents, as_batch=False
+            info, agent_num=self.num_data_aug, as_batch=False
         )
         self.buffer.init_buffer(obs.copy(), action_masks=action_masks)
 

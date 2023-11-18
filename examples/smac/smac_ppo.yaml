@@ -3,7 +3,7 @@ seed: 0
 run_dir: ./run_results/
 experiment_name: smac_mappo
 
-lr: 5e-4
+lr: 1e-3
 critic_lr: 1e-3
 
 data_chunk_length: 8

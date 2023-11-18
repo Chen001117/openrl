@@ -53,6 +53,7 @@ class OnPolicyDriver(RLDriver):
             logger,
             callback=callback,
         )
+        self.num_data_aug = self.num_agents * 2
 
     def _inner_loop(
         self,
@@ -92,7 +93,7 @@ class OnPolicyDriver(RLDriver):
 
         if rnn_states is not None:
             rnn_states[dones_env] = np.zeros(
-                (dones_env.sum(), self.num_agents, self.recurrent_N, self.hidden_size),
+                (dones_env.sum(), self.num_data_aug, self.recurrent_N, self.hidden_size),
                 dtype=np.float32,
             )
 
@@ -100,27 +101,28 @@ class OnPolicyDriver(RLDriver):
             rnn_states_critic[dones_env] = np.zeros(
                 (
                     dones_env.sum(),
-                    self.num_agents,
+                    self.num_data_aug,
                     *self.buffer.data.rnn_states_critic.shape[3:],
                 ),
                 dtype=np.float32,
             )
 
-        masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+        masks = np.ones((self.n_rollout_threads, self.num_data_aug, 1), dtype=np.float32)
         masks[dones_env] = np.zeros(
-            (dones_env.sum(), self.num_agents, 1), dtype=np.float32
+            (dones_env.sum(), self.num_data_aug, 1), dtype=np.float32
         )
 
         action_masks = prepare_action_masks(
-            infos, agent_num=self.num_agents, as_batch=False
+            infos, agent_num=self.num_data_aug, as_batch=False
         )
 
         active_masks = np.ones(
-            (self.n_rollout_threads, self.num_agents, 1), dtype=np.float32
+            (self.n_rollout_threads, self.num_data_aug, 1), dtype=np.float32
         )
+        dones = np.concatenate([dones, dones], axis=1)
         active_masks[dones] = np.zeros((dones.sum(), 1), dtype=np.float32)
         active_masks[dones_env] = np.ones(
-            (dones_env.sum(), self.num_agents, 1), dtype=np.float32
+            (dones_env.sum(), self.num_data_aug, 1), dtype=np.float32
         )
 
         bad_masks = np.array(
@@ -131,7 +133,7 @@ class OnPolicyDriver(RLDriver):
                         if "bad_transition" in info and info["bad_transition"][agent_id]
                         else [1.0]
                     )
-                    for agent_id in range(self.num_agents)
+                    for agent_id in range(self.num_data_aug)
                 ]
                 for info in infos
             ]
@@ -144,7 +146,7 @@ class OnPolicyDriver(RLDriver):
             actions,
             action_log_probs,
             values,
-            rewards,
+            rewards[:,:1],
             masks,
             active_masks=active_masks,
             bad_masks=bad_masks,
@@ -169,7 +171,7 @@ class OnPolicyDriver(RLDriver):
                 "buffer": self.buffer,
             }
 
-            obs, rewards, dones, infos = self.envs.step(actions, extra_data)
+            obs, rewards, dones, infos = self.envs.step(actions[:,:self.num_agents], extra_data)
 
             self.agent.num_time_steps += self.envs.parallel_env_num
             # Give access to local variables
@@ -255,10 +257,13 @@ class OnPolicyDriver(RLDriver):
         )
 
         if value is None:
-            values = np.zeros([self.n_rollout_threads, self.num_agents, 1])
+            values = np.zeros([self.n_rollout_threads, self.num_data_aug, 1])
         else:
             values = np.array(np.split(_t2n(value), self.n_rollout_threads))
+       
         actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
+        actions[:,self.num_agents:] = actions[:,:self.num_agents].copy()
+        
         action_log_probs = np.array(
             np.split(_t2n(action_log_prob), self.n_rollout_threads)
         )

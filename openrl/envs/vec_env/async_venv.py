@@ -59,6 +59,7 @@ class AsyncVectorEnv(BaseVecEnv):
         worker: Optional[Callable] = None,
         render_mode: Optional[str] = None,
         auto_reset: bool = True,
+        is_eval: bool = False,
     ):
         """Vectorized environment that runs multiple environments in parallel.
 
@@ -103,6 +104,7 @@ class AsyncVectorEnv(BaseVecEnv):
             observation_space = observation_space or dummy_env.observation_space
             action_space = action_space or dummy_env.action_space
         self._agent_num = dummy_env.agent_num
+        self._data_aug_num = self._agent_num * 2
 
         if hasattr(dummy_env, "env_name"):
             self._env_name = dummy_env.env_name
@@ -151,7 +153,7 @@ class AsyncVectorEnv(BaseVecEnv):
             self.observations = create_empty_array(
                 self.observation_space,
                 n=self.parallel_env_num,
-                agent_num=self._agent_num,
+                agent_num=self._agent_num if is_eval else self._data_aug_num,
                 fn=np.zeros,
             )
 

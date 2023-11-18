@@ -93,7 +93,7 @@ class PPOAlgorithm(BaseAlgorithm):
             for loss in loss_list:
                 self.algo_module.scaler.scale(loss).backward()
         else:
-            loss_list, value_loss, policy_loss, dist_entropy, ratio = self.prepare_loss(
+            loss_list, value_loss, policy_loss, dist_entropy, ratio, aug_loss = self.prepare_loss(
                 critic_obs_batch,
                 obs_batch,
                 rnn_states_batch,
@@ -154,6 +154,7 @@ class PPOAlgorithm(BaseAlgorithm):
             dist_entropy,
             actor_grad_norm,
             ratio,
+            aug_loss,
         )
 
     def cal_value_loss(
@@ -241,22 +242,30 @@ class PPOAlgorithm(BaseAlgorithm):
         else:
             critic_masks_batch = masks_batch
 
-        (
-            values,
-            action_log_probs,
-            dist_entropy,
-            policy_values,
-        ) = self.algo_module.evaluate_actions(
-            critic_obs_batch,
-            obs_batch,
-            rnn_states_batch,
-            rnn_states_critic_batch,
-            actions_batch,
-            masks_batch,
-            action_masks_batch,
-            active_masks_batch,
-            critic_masks_batch=critic_masks_batch,
-        )
+        batch_size = len(critic_obs_batch)
+        data_chunk_length = 8 # TODO
+        
+        # rnn half batch size
+        rhbs = batch_size // 2 // data_chunk_length
+        # mask for augmented data
+        mask4aug = np.ones(batch_size)
+        mask4aug = mask4aug.reshape([data_chunk_length, -1])
+        half_num_data_chunks = mask4aug.shape[1] // 2
+        mask4aug[:,:half_num_data_chunks] = 0.
+        mask4aug = mask4aug.flatten() == 1.
+        
+        # update policy w/o augmented data
+        
+        action_log_probs, dist_entropy, policy_values = \
+            self.algo_module.models["policy"](
+                "eval_actions",
+                obs_batch[~mask4aug],
+                rnn_states_batch[:rhbs],
+                actions_batch[~mask4aug],
+                masks_batch[~mask4aug],
+                action_masks_batch[~mask4aug],
+                active_masks_batch[~mask4aug],
+            )
 
         if self.use_joint_action_loss:
             action_log_probs_copy = (
@@ -277,22 +286,22 @@ class PPOAlgorithm(BaseAlgorithm):
 
             ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
         else:
-            ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
+            ratio = torch.exp(action_log_probs - old_action_log_probs_batch[~mask4aug])
 
         if self.dual_clip_ppo:
             ratio = torch.min(ratio, self.dual_clip_coeff)
 
-        surr1 = ratio * adv_targ
+        surr1 = ratio * adv_targ[~mask4aug]
         surr2 = (
-            torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
+            torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ[~mask4aug]
         )
 
         surr_final = torch.min(surr1, surr2)
 
         if self._use_policy_active_masks:
             policy_action_loss = (
-                -torch.sum(surr_final, dim=-1, keepdim=True) * active_masks_batch
-            ).sum() / active_masks_batch.sum()
+                -torch.sum(surr_final, dim=-1, keepdim=True) * active_masks_batch[~mask4aug]
+            ).sum() / active_masks_batch[~mask4aug].sum()
         else:
             policy_action_loss = -torch.sum(surr_final, dim=-1, keepdim=True).mean()
 
@@ -317,8 +326,35 @@ class PPOAlgorithm(BaseAlgorithm):
             )
         else:
             policy_loss = policy_action_loss
+            
+        # update policy w/ augmented data
+        
+        aug_action_log_probs, _, _ = \
+            self.algo_module.models["policy"](
+                "eval_actions",
+                obs_batch[mask4aug],
+                rnn_states_batch[rhbs:],
+                actions_batch[mask4aug],
+                masks_batch[mask4aug],
+                action_masks_batch[mask4aug],
+                active_masks_batch[mask4aug],
+            )
+        
+        aug_loss = torch.sum(-aug_action_log_probs, dim=-1, keepdim=True)
+        aug_loss = (aug_loss * active_masks_batch[mask4aug]).sum()
+        aug_loss = aug_loss / active_masks_batch[mask4aug].sum()
+        
+        original_policy_loss = policy_loss
+        policy_loss = policy_loss * 0.5 + aug_loss * 1e-3 * 0.5
 
-        # critic update
+        # update critic w/ both augmented data & origin data
+        
+        values, _ = self.algo_module.models["critic"](
+            critic_obs_batch, 
+            rnn_states_critic_batch,
+            critic_masks_batch,
+        )
+        
         if self._use_share_model:
             value_normalizer = self.algo_module.models["model"].value_normalizer
         elif isinstance(self.algo_module.models["critic"], DistributedDataParallel):
@@ -336,7 +372,8 @@ class PPOAlgorithm(BaseAlgorithm):
         loss_list = self.construct_loss_list(
             policy_loss, dist_entropy, value_loss, turn_on
         )
-        return loss_list, value_loss, policy_loss, dist_entropy, ratio
+        
+        return loss_list, value_loss, original_policy_loss, dist_entropy, ratio, aug_loss
 
     def get_data_generator(self, buffer, advantages):
         if self._use_recurrent_policy:
@@ -392,6 +429,7 @@ class PPOAlgorithm(BaseAlgorithm):
         train_info["actor_grad_norm"] = 0
         train_info["critic_grad_norm"] = 0
         train_info["ratio"] = 0
+        train_info["aug_loss"] = 0
         if self.world_size > 1:
             train_info["reduced_value_loss"] = 0
             train_info["reduced_policy_loss"] = 0
@@ -407,6 +445,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     dist_entropy,
                     actor_grad_norm,
                     ratio,
+                    aug_loss,
                 ) = self.ppo_update(sample, turn_on)
 
                 if self.world_size > 1:
@@ -424,6 +463,7 @@ class PPOAlgorithm(BaseAlgorithm):
                 train_info["actor_grad_norm"] += actor_grad_norm
                 train_info["critic_grad_norm"] += critic_grad_norm
                 train_info["ratio"] += ratio.mean().item()
+                train_info["aug_loss"] += aug_loss.mean().item()
 
         num_updates = self.ppo_epoch * self.num_mini_batch
 
