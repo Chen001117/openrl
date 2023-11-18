@@ -58,6 +58,9 @@ class SyncVectorEnv(BaseVecEnv):
             RuntimeError: If the observation space of some sub-environment does not match observation_space
                 (or, by default, the observation space of the first sub-environment).
         """
+        
+        self.data_aug_num = 6
+        
         self.viewer = None
         self.env_fns = env_fns
         self.envs = []
@@ -87,7 +90,7 @@ class SyncVectorEnv(BaseVecEnv):
         self.observations = create_empty_array(
             self.observation_space,
             n=self.parallel_env_num,
-            agent_num=self._agent_num,
+            agent_num=self.data_aug_num,
             fn=np.zeros,
         )
 

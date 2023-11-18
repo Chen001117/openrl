@@ -90,6 +90,9 @@ class AsyncVectorEnv(BaseVecEnv):
             ValueError: If observation_space is a custom space (i.e. not a default space in Gym,
                 such as gymnasium.spaces.Box, gymnasium.spaces.Discrete, or gymnasium.spaces.Dict) and shared_memory is True.
         """
+        
+        self.data_aug_num = 6
+        
         ctx = mp.get_context(context)
         self.env_fns = env_fns
         self.shared_memory = shared_memory
@@ -152,7 +155,7 @@ class AsyncVectorEnv(BaseVecEnv):
             self.observations = create_empty_array(
                 self.observation_space,
                 n=self.parallel_env_num,
-                agent_num=self._agent_num,
+                agent_num=self.data_aug_num,
                 fn=np.zeros,
             )
 

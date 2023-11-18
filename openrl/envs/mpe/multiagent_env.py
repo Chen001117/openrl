@@ -162,6 +162,7 @@ class MultiAgentEnv(gym.Env):
     def seed(self, seed=None):
         if seed is not None:
             self._np_random, seed = seeding.np_random(seed)
+            np.random.seed(seed)
 
     # step  this is  env.step()
     def step(self, action_n):
@@ -208,14 +209,42 @@ class MultiAgentEnv(gym.Env):
                 "render mode {} not supported".format(self.render_mode)
             )
 
-    @staticmethod
-    def construct_obs(obs_n):
-        critic_obs = (
-            np.concatenate(obs_n, axis=0)[None, ...].copy().repeat(len(obs_n), axis=0)
-        )
+    def trans_obs(self, obs):
+        return obs.copy()
+
+    def construct_obs(self, obs_n):
+        
+        obs = np.array(obs_n)
+        observations = np.concatenate([obs, obs], 0).copy()
+        
+        for agent_id in range(3,6):
+            
+            order = self.orders[agent_id]
+            land_info = observations[agent_id,4:10].reshape([3,2])
+            land_info = land_info[order].flatten()
+            observations[agent_id,4:10] = land_info
+            
+            order = self.obs_order.copy()
+            order = np.delete(order, agent_id-3)
+            order = np.argsort(order)
+            land_info = observations[agent_id,10:14].reshape([2,2])
+            land_info = land_info[order].flatten()
+            observations[agent_id,10:14] = land_info
+        
+        states = []
+        for order in self.orders:
+            state = obs.copy()
+            for i in range(3):
+                land_info = state[i,4:10].reshape([3,2])
+                land_info = land_info[order].flatten()
+                state[i,4:10] = land_info
+            state = state[order].flatten()
+            states.append(state)
+        states = np.array(states)
+        
         return {
-            "policy": obs_n,
-            "critic": critic_obs,
+            "policy": observations,
+            "critic": states,
         }
 
     def reset(
@@ -224,6 +253,19 @@ class MultiAgentEnv(gym.Env):
         seed: Union[int, List[int], None] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> Tuple[ObsType, Dict[str, Any]]:
+        
+        self.orders = np.array([
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0 ,2],
+            [1, 2, 0],
+            [2, 0 ,1],
+            [2, 1, 0]
+        ])
+        np.random.shuffle(self.orders)
+        
+        self.obs_order = self.orders[np.random.randint(1,6)]
+        
         self.seed(seed)
 
         self.current_step = 0

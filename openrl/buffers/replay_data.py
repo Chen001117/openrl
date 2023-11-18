@@ -47,6 +47,10 @@ class ReplayData(object):
         data_client=None,
         episode_length=None,
     ):
+        
+        self.data_aug_num = 6
+        self.num_agents = num_agents
+        
         if episode_length is None:
             episode_length = cfg.episode_length
         self.episode_length = episode_length
@@ -112,7 +116,7 @@ class ReplayData(object):
                 (
                     self.episode_length + 1,
                     self.n_rollout_threads,
-                    num_agents,
+                    self.data_aug_num,
                     *critic_obs_shape,
                 ),
                 dtype=np.float32,
@@ -121,7 +125,7 @@ class ReplayData(object):
                 (
                     self.episode_length + 1,
                     self.n_rollout_threads,
-                    num_agents,
+                    self.data_aug_num,
                     *policy_obs_shape,
                 ),
                 dtype=np.float32,
@@ -131,7 +135,7 @@ class ReplayData(object):
             (
                 self.episode_length + 1,
                 self.n_rollout_threads,
-                num_agents,
+                self.data_aug_num,
                 self.recurrent_N,
                 self.hidden_size,
             ),
@@ -140,7 +144,7 @@ class ReplayData(object):
         self.rnn_states_critic = np.zeros_like(self.rnn_states)
 
         self.value_preds = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
+            (self.episode_length + 1, self.n_rollout_threads, self.data_aug_num, 1),
             dtype=np.float32,
         )
         self.returns = np.zeros_like(self.value_preds)
@@ -150,7 +154,7 @@ class ReplayData(object):
                 (
                     self.episode_length + 1,
                     self.n_rollout_threads,
-                    num_agents,
+                    self.data_aug_num,
                     act_space.n,
                 ),
                 dtype=np.float32,
@@ -161,21 +165,21 @@ class ReplayData(object):
         act_shape = get_shape_from_act_space(act_space)
 
         self.actions = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+            (self.episode_length, self.n_rollout_threads, self.data_aug_num, act_shape),
             dtype=np.float32,
         )
         self.action_log_probs = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
+            (self.episode_length, self.n_rollout_threads, self.data_aug_num, act_shape),
             dtype=np.float32,
         )
 
         self.rewards = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, 1),
+            (self.episode_length, self.n_rollout_threads, self.data_aug_num, 1),
             dtype=np.float32,
         )
 
         self.masks = np.ones(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
+            (self.episode_length + 1, self.n_rollout_threads, self.data_aug_num, 1),
             dtype=np.float32,
         )
         self.bad_masks = np.ones_like(self.masks)
@@ -187,6 +191,7 @@ class ReplayData(object):
         self,
         data_name: str,
         step: int,
+        agent_number: int = None,
     ):
         assert hasattr(self, data_name)
         data = getattr(self, data_name)
@@ -196,7 +201,13 @@ class ReplayData(object):
         if isinstance(data, ObsData):
             return data.step_batch(step)
         else:
-            return np.concatenate(data[step])
+            if agent_number is not None:
+                if agent_number > 0:
+                    return np.concatenate(data[step,:,:agent_number])
+                else:
+                    return np.concatenate(data[step,:,agent_number:])
+            else:
+                return np.concatenate(data[step])
 
     def all_batch_data(self, data_name: str, min=None, max=None):
         assert hasattr(self, data_name)
@@ -1063,7 +1074,8 @@ class ReplayData(object):
 
     def recurrent_generator(self, advantages, num_mini_batch, data_chunk_length):
         episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
-        batch_size = n_rollout_threads * episode_length * num_agents
+        
+        batch_size = n_rollout_threads * episode_length * self.num_agents
         data_chunks = batch_size // data_chunk_length  # [C=r*T*M/L]
 
         mini_batch_size = data_chunks // num_mini_batch
@@ -1174,7 +1186,9 @@ class ReplayData(object):
             adv_targ = []
 
             for index in indices:
+                bias = self.episode_length * self.num_agents
                 ind = index * data_chunk_length
+                ind = ((ind // bias) * bias*2) + (ind % bias)
                 # size [T+1 N M Dim]-->[T N M Dim]-->[N,M,T,Dim]-->[N*M*T,Dim]-->[L,Dim]
                 if self._mixed_obs:
                     for key in critic_obs.keys():
@@ -1203,10 +1217,48 @@ class ReplayData(object):
                 )
                 adv_targ.append(advantages[ind : ind + data_chunk_length])
                 # size [T+1 N M Dim]-->[T N M Dim]-->[N M T Dim]-->[N*M*T,Dim]-->[1,Dim]
+                
                 rnn_states_batch.append(rnn_states[ind])
                 rnn_states_critic_batch.append(rnn_states_critic[ind])
 
-            L, N = data_chunk_length, mini_batch_size
+            for index in indices:
+                bias = self.episode_length * self.num_agents
+                ind = index * data_chunk_length
+                ind = ((ind // bias) * bias*2) + (ind % bias)
+                
+                # size [T+1 N M Dim]-->[T N M Dim]-->[N,M,T,Dim]-->[N*M*T,Dim]-->[L,Dim]
+                if self._mixed_obs:
+                    for key in critic_obs.keys():
+                        critic_obs_batch[key].append(
+                            critic_obs[key][ind +bias: ind + data_chunk_length+bias]
+                        )
+                    for key in policy_obs.keys():
+                        policy_obs_batch[key].append(
+                            policy_obs[key][ind+bias : ind + data_chunk_length+bias]
+                        )
+                else:
+                    critic_obs_batch.append(critic_obs[ind+bias : ind + data_chunk_length+bias])
+                    policy_obs_batch.append(policy_obs[ind+bias : ind + data_chunk_length+bias])
+
+                actions_batch.append(actions[ind+bias : ind + data_chunk_length+bias])
+                if self.action_masks is not None:
+                    action_masks_batch.append(
+                        action_masks[ind+bias : ind + data_chunk_length+bias]
+                    )
+                value_preds_batch.append(value_preds[ind+bias : ind + data_chunk_length+bias])
+                return_batch.append(returns[ind+bias : ind + data_chunk_length+bias])
+                masks_batch.append(masks[ind+bias : ind + data_chunk_length+bias])
+                active_masks_batch.append(active_masks[ind +bias: ind + data_chunk_length+bias])
+                old_action_log_probs_batch.append(
+                    action_log_probs[ind +bias: ind + data_chunk_length+bias]
+                )
+                adv_targ.append(advantages[ind +bias: ind + data_chunk_length+bias])
+                # size [T+1 N M Dim]-->[T N M Dim]-->[N M T Dim]-->[N*M*T,Dim]-->[1,Dim]
+                
+                rnn_states_batch.append(rnn_states[ind+bias])
+                rnn_states_critic_batch.append(rnn_states_critic[ind+bias])
+
+            L, N = data_chunk_length, mini_batch_size*2
 
             # These are all from_numpys of size (L, N, Dim)
             if self._mixed_obs:

@@ -18,6 +18,7 @@
 
 from typing import Union
 
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -42,8 +43,9 @@ class PPOAlgorithm(BaseAlgorithm):
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
         self.train_list = [self.train_ppo]
         self.use_deepspeed = cfg.use_deepspeed
+        self.data_aug_num = 6
 
-    def ppo_update(self, sample, turn_on=True):
+    def ppo_update(self, sample, turn_on=True, first=False):
         for optimizer in self.algo_module.optimizers.values():
             optimizer.zero_grad()
 
@@ -90,6 +92,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     return_batch,
                     active_masks_batch,
                     turn_on,
+                    first,
                 )
             for loss in loss_list:
                 self.algo_module.scaler.scale(loss).backward()
@@ -108,6 +111,7 @@ class PPOAlgorithm(BaseAlgorithm):
                 return_batch,
                 active_masks_batch,
                 turn_on,
+                first,
             )
             if self.use_deepspeed:
                 if self._use_share_model:
@@ -242,6 +246,7 @@ class PPOAlgorithm(BaseAlgorithm):
         return_batch,
         active_masks_batch,
         turn_on,
+        first,
     ):
         if self.use_joint_action_loss:
             critic_obs_batch = self.to_single_np(critic_obs_batch)
@@ -254,23 +259,34 @@ class PPOAlgorithm(BaseAlgorithm):
 
         else:
             critic_masks_batch = masks_batch
-
-        (
-            values,
-            action_log_probs,
-            dist_entropy,
-            policy_values,
-        ) = self.algo_module.evaluate_actions(
-            critic_obs_batch,
-            obs_batch,
-            rnn_states_batch,
-            rnn_states_critic_batch,
-            actions_batch,
-            masks_batch,
-            action_masks_batch,
-            active_masks_batch,
-            critic_masks_batch=critic_masks_batch,
+        
+        hbsrnn = len(critic_obs_batch) // 10
+        self.main_idx = np.ones(len(critic_obs_batch))
+        self.main_idx = self.main_idx.reshape([5,-1])
+        self.main_idx[:,self.main_idx.shape[1]//2:] = 0
+        self.main_idx = self.main_idx.flatten() == 1.
+        
+        
+        values, _ = self.algo_module.models["critic"](
+            critic_obs_batch, 
+            rnn_states_critic_batch, 
+            critic_masks_batch
         )
+        
+        (
+            action_log_probs, 
+            dist_entropy, 
+            policy_values
+        )= self.algo_module.models["policy"](
+            "eval_actions",
+            obs_batch[self.main_idx],
+            rnn_states_batch[:hbsrnn],
+            actions_batch[self.main_idx],
+            masks_batch[self.main_idx],
+            action_masks_batch[self.main_idx],
+            active_masks_batch[self.main_idx],
+        )
+        
 
         if self.use_joint_action_loss:
             action_log_probs_copy = (
@@ -291,22 +307,22 @@ class PPOAlgorithm(BaseAlgorithm):
 
             ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
         else:
-            ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
+            ratio = torch.exp(action_log_probs - old_action_log_probs_batch[self.main_idx])
 
         if self.dual_clip_ppo:
             ratio = torch.min(ratio, self.dual_clip_coeff)
 
-        surr1 = ratio * adv_targ
+        surr1 = ratio * adv_targ[self.main_idx]
         surr2 = (
-            torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
+            torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ[self.main_idx]
         )
 
         surr_final = torch.min(surr1, surr2)
 
         if self._use_policy_active_masks:
             policy_action_loss = (
-                -torch.sum(surr_final, dim=-1, keepdim=True) * active_masks_batch
-            ).sum() / active_masks_batch.sum()
+                -torch.sum(surr_final, dim=-1, keepdim=True) * active_masks_batch[self.main_idx]
+            ).sum() / active_masks_batch[self.main_idx].sum()
         else:
             policy_action_loss = -torch.sum(surr_final, dim=-1, keepdim=True).mean()
 
@@ -331,7 +347,41 @@ class PPOAlgorithm(BaseAlgorithm):
             )
         else:
             policy_loss = policy_action_loss
+            
+            
+        (
+            action_log_probs_aug, 
+            _, 
+            _
+        ) = self.algo_module.models["policy"](
+            "eval_actions",
+            obs_batch[~self.main_idx],
+            rnn_states_batch[hbsrnn:],
+            actions_batch[~self.main_idx],
+            masks_batch[~self.main_idx],
+            action_masks_batch[~self.main_idx],
+            active_masks_batch[~self.main_idx],
+        )
+        
+        # # PPO auxiliary loss
+        # ratio_agu = torch.exp(action_log_probs_aug - old_action_log_probs_batch[~self.main_idx])
+        # surr1_agu = ratio_agu * adv_targ[~self.main_idx]
+        # surr2_agu = (
+        #     torch.clamp(ratio_agu, 1.0-self.clip_param, 1.0+self.clip_param) * adv_targ[~self.main_idx]
+        # )
+        # surr_final_aug = torch.min(surr1_agu, surr2_agu)
+        # aux_loss_aux = -torch.sum(surr_final_aug, dim=-1, keepdim=True)
+        # aux_loss_aux = (aux_loss_aux * active_masks_batch[~self.main_idx]).sum()
+        # aux_loss_aux = aux_loss_aux / active_masks_batch[~self.main_idx].sum()
 
+
+        
+        # DKL penalty
+        surr_final_aug = -torch.sum(action_log_probs_aug, dim=-1, keepdim=True)
+        aux_loss = (surr_final_aug * active_masks_batch[~self.main_idx]).sum() 
+        aux_loss = aux_loss / active_masks_batch[~self.main_idx].sum()
+        policy_loss = policy_loss * 0.5 + aux_loss * 0.5 * 1e-4
+        
         # critic update
         if self._use_share_model:
             value_normalizer = self.algo_module.models["model"].value_normalizer
@@ -382,9 +432,25 @@ class PPOAlgorithm(BaseAlgorithm):
                 ].module.value_normalizer
             else:
                 value_normalizer = self.algo_module.get_critic_value_normalizer()
-            advantages = buffer.returns[:-1] - value_normalizer.denormalize(
-                buffer.value_preds[:-1]
-            )
+            
+            returns = buffer.returns[:-1]
+            values = value_normalizer.denormalize(buffer.value_preds[:-1])
+            advantages = returns - values
+
+            # advantages = advantages.mean(axis=2, keepdims=True)
+            # advantages = np.repeat(advantages, self.data_aug_num, axis=2)
+            
+            # min_idx = abs(advantages).argmin(2, keepdims=True)
+            # advantages = np.take_along_axis(advantages, min_idx, axis=2)
+            # advantages = np.repeat(advantages, self.data_aug_num, axis=2)
+
+            max_idx = abs(advantages).argmax(2, keepdims=True)
+            max_err_adv = np.take_along_axis(advantages, max_idx, axis=2)
+            advantages = advantages.mean(axis=2, keepdims=True)
+            advantages = advantages * self.data_aug_num - max_err_adv
+            advantages = advantages / (self.data_aug_num - 1)
+            advantages = np.repeat(advantages, self.data_aug_num, axis=2)
+
         else:
             advantages = buffer.returns[:-1] - buffer.value_preds[:-1]
 
@@ -410,7 +476,7 @@ class PPOAlgorithm(BaseAlgorithm):
             train_info["reduced_value_loss"] = 0
             train_info["reduced_policy_loss"] = 0
 
-        for _ in range(self.ppo_epoch):
+        for i in range(self.ppo_epoch):
             data_generator = self.get_data_generator(buffer, advantages)
 
             for sample in data_generator:

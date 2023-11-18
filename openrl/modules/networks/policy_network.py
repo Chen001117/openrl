@@ -122,6 +122,8 @@ class PolicyNetwork(BasePolicyNetwork):
     def forward(self, forward_type, *args, **kwargs):
         if forward_type == "original":
             return self.forward_original(*args, **kwargs)
+        if forward_type == "given_action":
+            return self.forward_given_action(*args, **kwargs)
         elif forward_type == "eval_actions":
             return self.eval_actions(*args, **kwargs)
         else:
@@ -160,6 +162,43 @@ class PolicyNetwork(BasePolicyNetwork):
             actor_features, action_masks, deterministic
         )
         return actions, action_log_probs, rnn_states
+    
+    def forward_given_action(
+        self, raw_obs, rnn_states, action, masks, action_masks=None, deterministic=False, active_masks=None
+    ):
+        policy_obs = get_policy_obs(raw_obs)
+        if self._mixed_obs:
+            for key in policy_obs.keys():
+                policy_obs[key] = check(policy_obs[key], self.use_half, self.tpdv)
+                if self.use_half:
+                    policy_obs[key].half()
+        else:
+            policy_obs = check(policy_obs, self.use_half, self.tpdv)
+            if self.use_half or self._use_fp16:
+                policy_obs = policy_obs.half()
+
+        rnn_states = check(rnn_states, self.use_half, self.tpdv)
+        masks = check(masks, self.use_half, self.tpdv)
+
+        if action_masks is not None:
+            action_masks = check(action_masks, self.use_half, self.tpdv)
+
+        actor_features = self.base(policy_obs)
+
+        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+            actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+
+        if self._use_influence_policy:
+            mlp_obs = self.mlp(policy_obs)
+            actor_features = torch.cat([actor_features, mlp_obs], dim=1)
+
+        action_log_probs, _ = self.act.evaluate_actions(
+            actor_features,
+            action,
+            action_masks,
+            active_masks=active_masks if self._use_policy_active_masks else None,
+        )
+        return action_log_probs, rnn_states
 
     def eval_actions(
         self, obs, rnn_states, action, masks, action_masks=None, active_masks=None

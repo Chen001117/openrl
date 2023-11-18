@@ -36,14 +36,15 @@ def reset_rnn_states(
     # First we reshape the episode_starts to match the rnn_states shape
     # Since episode_starts affects all agents in the environment, we repeat it agent_num times
     episode_starts = np.repeat(copy.copy(episode_starts), agent_num)
-    # We then need to expand the dimensions of episode_starts to match rnn_states
-    # The new shape of episode_starts should be (env_num * agent_num, 1, 1) to broadcast correctly
-    episode_starts = episode_starts[:, None, None]
-    # Now, episode_starts should broadcast over the last two dimensions of rnn_states when multiplied
-    # We want to set rnn_states to zero where episode_starts is 1, so we invert the episode_starts as a mask
-    mask = 1 - episode_starts
-    # Apply the mask to rnn_states, setting the appropriate states to zero
-    rnn_states *= mask
+    rnn_states[episode_starts] = 0.
+    # # We then need to expand the dimensions of episode_starts to match rnn_states
+    # # The new shape of episode_starts should be (env_num * agent_num, 1, 1) to broadcast correctly
+    # episode_starts = episode_starts[:, None, None]
+    # # Now, episode_starts should broadcast over the last two dimensions of rnn_states when multiplied
+    # # We want to set rnn_states to zero where episode_starts is 1, so we invert the episode_starts as a mask
+    # mask = 1 - episode_starts
+    # # Apply the mask to rnn_states, setting the appropriate states to zero
+    # rnn_states *= mask
     return rnn_states
 
 
