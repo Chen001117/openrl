@@ -82,6 +82,8 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
         
         obs = np.concatenate([obs, obs])
         for i, order in enumerate(self.obs_orders):
+            if i < self.env.n_agents:
+                continue
             agent_idx = i % self.env.n_agents
             enemy = obs[i,4:49]
             enemy = enemy.reshape([self.env.n_agents,9])

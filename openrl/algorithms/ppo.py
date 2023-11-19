@@ -41,6 +41,8 @@ class PPOAlgorithm(BaseAlgorithm):
         self.use_joint_action_loss = cfg.use_joint_action_loss
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
         self.train_list = [self.train_ppo]
+        
+        self.data_aug_num = self.agent_num * 2
 
     def ppo_update(self, sample, turn_on=True):
         for optimizer in self.algo_module.optimizers.values():
@@ -345,7 +347,7 @@ class PPOAlgorithm(BaseAlgorithm):
         aug_loss = aug_loss / active_masks_batch[mask4aug].sum()
         
         original_policy_loss = policy_loss
-        policy_loss = policy_loss * 0.5 + aug_loss * 1e-3 * 0.5
+        policy_loss = policy_loss * 0.5 + aug_loss * 1e-4 * 0.5
 
         # update critic w/ both augmented data & origin data
         
@@ -405,14 +407,27 @@ class PPOAlgorithm(BaseAlgorithm):
                 ].module.value_normalizer
             else:
                 value_normalizer = self.algo_module.get_critic_value_normalizer()
-            advantages = buffer.returns[:-1] - value_normalizer.denormalize(
-                buffer.value_preds[:-1]
-            )
+            
+            returns = buffer.returns[:-1]
+            values = value_normalizer.denormalize(buffer.value_preds[:-1])
+            advantages = returns - values
+
+            # advantages = advantages.mean(axis=2, keepdims=True)
+            # advantages = np.repeat(advantages, self.data_aug_num, axis=2)
+            
+            # min_idx = abs(advantages).argmin(2, keepdims=True)
+            # advantages = np.take_along_axis(advantages, min_idx, axis=2)
+            # advantages = np.repeat(advantages, self.data_aug_num, axis=2)
+
+            max_idx = abs(advantages).argmax(2, keepdims=True)
+            max_err_adv = np.take_along_axis(advantages, max_idx, axis=2)
+            advantages = advantages.mean(axis=2, keepdims=True)
+            advantages = advantages * self.data_aug_num - max_err_adv
+            advantages = advantages / (self.data_aug_num - 1)
+            advantages = np.repeat(advantages, self.data_aug_num, axis=2)
+            
         else:
             advantages = buffer.returns[:-1] - buffer.value_preds[:-1]
-
-        if self._use_adv_normalize:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
         advantages_copy = advantages.copy()
         advantages_copy[buffer.active_masks[:-1] == 0.0] = np.nan
