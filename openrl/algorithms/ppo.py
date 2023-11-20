@@ -49,6 +49,7 @@ class PPOAlgorithm(BaseAlgorithm):
         (
             critic_obs_batch,
             obs_batch,
+            original_obs_batch,
             rnn_states_batch,
             rnn_states_critic_batch,
             actions_batch,
@@ -75,9 +76,12 @@ class PPOAlgorithm(BaseAlgorithm):
                     policy_loss,
                     dist_entropy,
                     ratio,
+                    ratio_aug, 
+                    ratio_ppo,
                 ) = self.prepare_loss(
                     critic_obs_batch,
                     obs_batch,
+                    original_obs_batch,
                     rnn_states_batch,
                     rnn_states_critic_batch,
                     actions_batch,
@@ -93,9 +97,10 @@ class PPOAlgorithm(BaseAlgorithm):
             for loss in loss_list:
                 self.algo_module.scaler.scale(loss).backward()
         else:
-            loss_list, value_loss, policy_loss, dist_entropy, ratio = self.prepare_loss(
+            loss_list, value_loss, policy_loss, dist_entropy, ratio, ratio_aug, ratio_ppo, = self.prepare_loss(
                 critic_obs_batch,
                 obs_batch,
+                original_obs_batch,
                 rnn_states_batch,
                 rnn_states_critic_batch,
                 actions_batch,
@@ -154,6 +159,8 @@ class PPOAlgorithm(BaseAlgorithm):
             dist_entropy,
             actor_grad_norm,
             ratio,
+            ratio_aug, 
+            ratio_ppo,
         )
 
     def cal_value_loss(
@@ -217,6 +224,7 @@ class PPOAlgorithm(BaseAlgorithm):
         self,
         critic_obs_batch,
         obs_batch,
+        original_obs_batch,
         rnn_states_batch,
         rnn_states_critic_batch,
         actions_batch,
@@ -257,36 +265,58 @@ class PPOAlgorithm(BaseAlgorithm):
             active_masks_batch,
             critic_masks_batch=critic_masks_batch,
         )
+        
+        # logp = self.algo_module.models["policy"](
+        #     "get_log_prob",
+        #     original_obs_batch,
+        #     rnn_states_batch,
+        #     actions_batch,
+        #     masks_batch,
+        #     action_masks_batch,
+        #     active_masks_batch,
+        # )
+        
+        if self.last_logp is None:
+            self.last_logp = old_action_log_probs_batch
 
-        if self.use_joint_action_loss:
-            action_log_probs_copy = (
-                action_log_probs.reshape(-1, self.agent_num, action_log_probs.shape[-1])
-                .sum(dim=(1, -1), keepdim=True)
-                .reshape(-1, 1)
-            )
-            old_action_log_probs_batch_copy = (
-                old_action_log_probs_batch.reshape(
-                    -1, self.agent_num, old_action_log_probs_batch.shape[-1]
-                )
-                .sum(dim=(1, -1), keepdim=True)
-                .reshape(-1, 1)
-            )
+        # if self.use_joint_action_loss:
+        #     action_log_probs_copy = (
+        #         action_log_probs.reshape(-1, self.agent_num, action_log_probs.shape[-1])
+        #         .sum(dim=(1, -1), keepdim=True)
+        #         .reshape(-1, 1)
+        #     )
+        #     old_action_log_probs_batch_copy = (
+        #         old_action_log_probs_batch.reshape(
+        #             -1, self.agent_num, old_action_log_probs_batch.shape[-1]
+        #         )
+        #         .sum(dim=(1, -1), keepdim=True)
+        #         .reshape(-1, 1)
+        #     )
 
-            active_masks_batch = active_masks_batch.reshape(-1, self.agent_num, 1)
-            active_masks_batch = active_masks_batch[:, 0, :]
+        #     active_masks_batch = active_masks_batch.reshape(-1, self.agent_num, 1)
+        #     active_masks_batch = active_masks_batch[:, 0, :]
 
-            ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
-        else:
-            ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
+        #     ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
+        # else:
+        #     ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
 
-        if self.dual_clip_ppo:
-            ratio = torch.min(ratio, self.dual_clip_coeff)
+        # if self.dual_clip_ppo:
+        #     ratio = torch.min(ratio, self.dual_clip_coeff)
+
+        # surr1 = ratio * adv_targ
+        # surr2 = (
+        #     torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
+        # )
+
+        # surr_final = torch.min(surr1, surr2)
+
+        # clip_param = 100.
+        ratio_ppo = torch.exp(self.last_logp - old_action_log_probs_batch)
+        ratio_aug = torch.exp(action_log_probs - self.last_logp)
+        ratio = ratio_aug * ratio_ppo
 
         surr1 = ratio * adv_targ
-        surr2 = (
-            torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
-        )
-
+        surr2 = torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
         surr_final = torch.min(surr1, surr2)
 
         if self._use_policy_active_masks:
@@ -318,6 +348,10 @@ class PPOAlgorithm(BaseAlgorithm):
         else:
             policy_loss = policy_action_loss
 
+        ratio_aux = torch.exp(self.last_logp - old_action_log_probs_batch)
+        loss_aux = ratio_aux * (-action_log_probs)
+        policy_loss = policy_loss + loss_aux.mean() * 0.1
+
         # critic update
         if self._use_share_model:
             value_normalizer = self.algo_module.models["model"].value_normalizer
@@ -336,7 +370,10 @@ class PPOAlgorithm(BaseAlgorithm):
         loss_list = self.construct_loss_list(
             policy_loss, dist_entropy, value_loss, turn_on
         )
-        return loss_list, value_loss, policy_loss, dist_entropy, ratio
+        
+        self.last_logp = action_log_probs.detach()
+        
+        return loss_list, value_loss, policy_loss, dist_entropy, ratio, ratio_aug, ratio_ppo
 
     def get_data_generator(self, buffer, advantages):
         if self._use_recurrent_policy:
@@ -368,14 +405,15 @@ class PPOAlgorithm(BaseAlgorithm):
                 ].module.value_normalizer
             else:
                 value_normalizer = self.algo_module.get_critic_value_normalizer()
-            advantages = buffer.returns[:-1] - value_normalizer.denormalize(
-                buffer.value_preds[:-1]
-            )
+                
+            returns = buffer.returns[:-1]
+            values = value_normalizer.denormalize(buffer.value_preds[:-1])
+            advantages = returns - values
+
+            advantages = advantages.mean(axis=2, keepdims=True)
+            advantages = np.repeat(advantages, self.agent_num, axis=2)
         else:
             advantages = buffer.returns[:-1] - buffer.value_preds[:-1]
-
-        if self._use_adv_normalize:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
         advantages_copy = advantages.copy()
         advantages_copy[buffer.active_masks[:-1] == 0.0] = np.nan
@@ -392,10 +430,13 @@ class PPOAlgorithm(BaseAlgorithm):
         train_info["actor_grad_norm"] = 0
         train_info["critic_grad_norm"] = 0
         train_info["ratio"] = 0
+        train_info["ratio_ppo"] = 0
+        train_info["ratio_aug"] = 0
         if self.world_size > 1:
             train_info["reduced_value_loss"] = 0
             train_info["reduced_policy_loss"] = 0
 
+        self.last_logp = None
         for _ in range(self.ppo_epoch):
             data_generator = self.get_data_generator(buffer, advantages)
 
@@ -407,6 +448,8 @@ class PPOAlgorithm(BaseAlgorithm):
                     dist_entropy,
                     actor_grad_norm,
                     ratio,
+                    ratio_aug, 
+                    ratio_ppo,
                 ) = self.ppo_update(sample, turn_on)
 
                 if self.world_size > 1:
@@ -424,6 +467,8 @@ class PPOAlgorithm(BaseAlgorithm):
                 train_info["actor_grad_norm"] += actor_grad_norm
                 train_info["critic_grad_norm"] += critic_grad_norm
                 train_info["ratio"] += ratio.mean().item()
+                train_info["ratio_ppo"] += ratio_ppo.mean().item()
+                train_info["ratio_aug"] += ratio_aug.mean().item()
 
         num_updates = self.ppo_epoch * self.num_mini_batch
 

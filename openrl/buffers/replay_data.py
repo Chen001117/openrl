@@ -47,6 +47,8 @@ class ReplayData(object):
         data_client=None,
         episode_length=None,
     ):
+        self.num_agents = num_agents
+        
         if episode_length is None:
             episode_length = cfg.episode_length
         self.episode_length = episode_length
@@ -1062,199 +1064,330 @@ class ReplayData(object):
             yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
 
     def recurrent_generator(self, advantages, num_mini_batch, data_chunk_length):
-        episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
-        batch_size = n_rollout_threads * episode_length * num_agents
-        data_chunks = batch_size // data_chunk_length  # [C=r*T*M/L]
 
-        mini_batch_size = data_chunks // num_mini_batch
+        critic_obs = self.critic_obs[:-1].copy()
+        policy_obs = self.policy_obs[:-1].copy()
+        original_obs = policy_obs.copy()
 
-        assert n_rollout_threads * episode_length * num_agents >= data_chunk_length, (
-            "PPO requires the number of processes ({})* number of agents ({}) * episode"
-            " length ({}) to be greater than or equal to the number of data chunk"
-            " length ({}).".format(
-                n_rollout_threads, num_agents, episode_length, data_chunk_length
-            )
+        epi_len, env_num, agent_num, _ = policy_obs.shape
+
+        # for smac
+        order = np.arange(agent_num)
+        np.random.shuffle(order)
+        policy_obs = policy_obs.reshape([epi_len*env_num*agent_num, -1])
+        enemy = policy_obs[:,4:49].copy()
+        enemy = enemy.reshape([epi_len*env_num*agent_num, self.num_agents, 9])
+        enemy = np.transpose(enemy, [1,0,2])
+        enemy = enemy[order]
+        enemy = np.transpose(enemy, [1,0,2])
+        enemy = enemy.reshape([epi_len*env_num*agent_num, 45])
+        policy_obs[:,4:49] = enemy
+        policy_obs = policy_obs.reshape([epi_len*env_num*agent_num, -1])
+        allies = policy_obs[:,49:85].copy()
+        allies = allies.reshape([epi_len*env_num, agent_num, self.num_agents-1, 9])
+        for agent_idx in range(self.num_agents):
+            agent_order = order.copy()
+            agent_order = np.delete(agent_order, np.argwhere(agent_order==agent_idx))
+            agent_order = np.where(agent_order>agent_idx,agent_order-1,agent_order)
+            ally = allies[:,agent_idx]
+            ally = np.transpose(ally, [1,0,2])
+            ally = ally[agent_order]
+            ally = np.transpose(ally, [1,0,2])
+            ally = ally.reshape([epi_len*env_num, self.num_agents-1, 9])
+            allies[:,agent_idx] = ally
+        allies = allies.reshape([epi_len*env_num*agent_num, -1])
+        policy_obs[:,49:85] = allies
+        policy_obs = policy_obs.reshape([epi_len, env_num, agent_num, -1])
+
+        order = np.arange(agent_num)
+        np.random.shuffle(order)
+        critic_obs = critic_obs.reshape([epi_len*env_num*agent_num, -1])
+        enemy = critic_obs[:,40:75].copy()
+        enemy = enemy.reshape([epi_len*env_num*agent_num, self.num_agents, 7])
+        enemy = np.transpose(enemy, [1,0,2])
+        enemy = enemy[order]
+        enemy = np.transpose(enemy, [1,0,2])
+        enemy = enemy.reshape([epi_len*env_num*agent_num, 35])
+        critic_obs[:,40:75] = enemy
+        allies = critic_obs[:,0:40].copy()
+        allies = allies.reshape([epi_len*env_num*agent_num, self.num_agents, 8])
+        allies = np.transpose(allies, [1,0,2])
+        allies = allies[order]
+        allies = np.transpose(allies, [1,0,2])
+        allies = allies.reshape([epi_len*env_num*agent_num, 40])
+        critic_obs[:,0:40] = allies
+        critic_obs = critic_obs.reshape([epi_len, env_num, agent_num, -1])
+
+        # # for mpe
+        # order = np.arange(agent_num)
+        # np.random.shuffle(order)
+        # policy_obs = policy_obs.reshape([epi_len*env_num*agent_num, -1])
+        # entity = policy_obs[:,4:10].copy()
+        # entity = entity.reshape([epi_len*env_num*agent_num, 3, 2])
+        # entity = np.transpose(entity, [1,0,2])
+        # entity = entity[order]
+        # entity = np.transpose(entity, [1,0,2])
+        # entity = entity.reshape([epi_len*env_num*agent_num, 6])
+        # policy_obs[:,4:10] = entity
+        # policy_obs = policy_obs.reshape([epi_len, env_num, agent_num, -1])
+        
+        # critic_obs = []
+        # for _ in range(3):
+        #     order = np.arange(agent_num)
+        #     np.random.shuffle(order)
+        #     obs = policy_obs.copy()
+        #     obs = obs.reshape([epi_len*env_num*agent_num, -1])
+        #     entity = obs[:,4:10]
+        #     entity = entity.reshape([epi_len*env_num*agent_num, 3, 2])
+        #     entity = np.transpose(entity, [1,0,2])
+        #     entity = entity[order]
+        #     entity = np.transpose(entity, [1,0,2])
+        #     entity = entity.reshape([epi_len*env_num*agent_num, 6])
+        #     obs[:,4:10] = entity
+        #     obs = obs.reshape([epi_len*env_num, 1, -1])
+        #     critic_obs.append(obs)
+        # critic_obs = np.concatenate(critic_obs, axis=1)
+        # critic_obs = critic_obs.reshape([epi_len, env_num, agent_num, -1])
+        
+        critic_obs_batch = np.transpose(critic_obs, [0,2,1,3])
+        policy_obs_batch = np.transpose(policy_obs, [0,2,1,3])
+        original_obs_batch = np.transpose(original_obs, [0,2,1,3])
+        actions_batch = np.transpose(self.actions, [0,2,1,3])
+        value_preds_batch = np.transpose(self.value_preds[:-1], [0,2,1,3])
+        return_batch = np.transpose(self.returns[:-1], [0,2,1,3])
+        masks_batch = np.transpose(self.masks[:-1], [0,2,1,3])
+        active_masks_batch = np.transpose(self.active_masks[:-1], [0,2,1,3])
+        old_action_log_probs_batch = np.transpose(self.action_log_probs, [0,2,1,3])
+        adv_targ = np.transpose(advantages, [0,2,1,3])
+        action_masks_batch = np.transpose(self.action_masks[:-1], [0,2,1,3])
+
+        critic_obs_batch = critic_obs_batch.reshape([-1, critic_obs_batch.shape[-1]])
+        policy_obs_batch = policy_obs_batch.reshape([-1, policy_obs_batch.shape[-1]])
+        original_obs_batch = original_obs_batch.reshape([-1, original_obs_batch.shape[-1]])
+        actions_batch = actions_batch.reshape([-1, actions_batch.shape[-1]])
+        value_preds_batch = value_preds_batch.reshape([-1, value_preds_batch.shape[-1]])
+        return_batch = return_batch.reshape([-1, return_batch.shape[-1]])
+        masks_batch = masks_batch.reshape([-1, masks_batch.shape[-1]])
+        active_masks_batch = active_masks_batch.reshape([-1, active_masks_batch.shape[-1]])
+        old_action_log_probs_batch = old_action_log_probs_batch.reshape([-1, old_action_log_probs_batch.shape[-1]])
+        adv_targ = adv_targ.reshape([-1, adv_targ.shape[-1]])
+        action_masks_batch = action_masks_batch.reshape([-1, action_masks_batch.shape[-1]])
+        
+        rnn_states_batch = self.rnn_states[0]
+        rnn_states_critic_batch = self.rnn_states_critic[0]
+        rnn_states_batch = rnn_states_batch.reshape([-1,*self.rnn_states.shape[3:]])
+        rnn_states_critic_batch = rnn_states_critic_batch.reshape([-1,*self.rnn_states_critic.shape[3:]])
+        
+        yield (
+            critic_obs_batch, 
+            policy_obs_batch, 
+            original_obs_batch,
+            rnn_states_batch, 
+            rnn_states_critic_batch, 
+            actions_batch, 
+            value_preds_batch, 
+            return_batch, 
+            masks_batch, 
+            active_masks_batch, 
+            old_action_log_probs_batch, 
+            adv_targ, 
+            action_masks_batch,
         )
 
-        rand = torch.randperm(data_chunks).numpy()
-        sampler = [
-            rand[i * mini_batch_size : (i + 1) * mini_batch_size]
-            for i in range(num_mini_batch)
-        ]
+        
+        # episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
+        # batch_size = n_rollout_threads * episode_length * num_agents
+        # data_chunks = batch_size // data_chunk_length  # [C=r*T*M/L]
 
-        if self._mixed_obs:
-            critic_obs = {}
-            policy_obs = {}
-            for key in self.critic_obs.keys():
-                if len(self.critic_obs[key].shape) == 6:
-                    critic_obs[key] = (
-                        self.critic_obs[key][:-1]
-                        .transpose(1, 2, 0, 3, 4, 5)
-                        .reshape(-1, *self.critic_obs[key].shape[3:])
-                    )
-                elif len(self.critic_obs[key].shape) == 5:
-                    critic_obs[key] = (
-                        self.critic_obs[key][:-1]
-                        .transpose(1, 2, 0, 3, 4)
-                        .reshape(-1, *self.critic_obs[key].shape[3:])
-                    )
-                else:
-                    critic_obs[key] = _cast(self.critic_obs[key][:-1])
+        # mini_batch_size = data_chunks // num_mini_batch
 
-            for key in self.policy_obs.keys():
-                if len(self.policy_obs[key].shape) == 6:
-                    policy_obs[key] = (
-                        self.policy_obs[key][:-1]
-                        .transpose(1, 2, 0, 3, 4, 5)
-                        .reshape(-1, *self.policy_obs[key].shape[3:])
-                    )
-                elif len(self.policy_obs[key].shape) == 5:
-                    policy_obs[key] = (
-                        self.policy_obs[key][:-1]
-                        .transpose(1, 2, 0, 3, 4)
-                        .reshape(-1, *self.policy_obs[key].shape[3:])
-                    )
-                else:
-                    policy_obs[key] = _cast(self.policy_obs[key][:-1])
-        else:
-            if len(self.critic_obs.shape) > 4:
-                critic_obs = (
-                    self.critic_obs[:-1]
-                    .transpose(1, 2, 0, 3, 4, 5)
-                    .reshape(-1, *self.critic_obs.shape[3:])
-                )
-                policy_obs = (
-                    self.policy_obs[:-1]
-                    .transpose(1, 2, 0, 3, 4, 5)
-                    .reshape(-1, *self.policy_obs.shape[3:])
-                )
-            else:
-                critic_obs = _cast(self.critic_obs[:-1])
-                policy_obs = _cast(self.policy_obs[:-1])
+        # assert n_rollout_threads * episode_length * num_agents >= data_chunk_length, (
+        #     "PPO requires the number of processes ({})* number of agents ({}) * episode"
+        #     " length ({}) to be greater than or equal to the number of data chunk"
+        #     " length ({}).".format(
+        #         n_rollout_threads, num_agents, episode_length, data_chunk_length
+        #     )
+        # )
 
-        actions = _cast(self.actions)
-        action_log_probs = _cast(self.action_log_probs)
-        advantages = _cast(advantages)
-        value_preds = _cast(self.value_preds[:-1])
-        returns = _cast(self.returns[:-1])
-        masks = _cast(self.masks[:-1])
-        active_masks = _cast(self.active_masks[:-1])
+        # rand = torch.randperm(data_chunks).numpy()
+        # sampler = [
+        #     rand[i * mini_batch_size : (i + 1) * mini_batch_size]
+        #     for i in range(num_mini_batch)
+        # ]
 
-        rnn_states = (
-            self.rnn_states[:-1]
-            .transpose(1, 2, 0, 3, 4)
-            .reshape(-1, *self.rnn_states.shape[3:])
-        )
-        rnn_states_critic = (
-            self.rnn_states_critic[:-1]
-            .transpose(1, 2, 0, 3, 4)
-            .reshape(-1, *self.rnn_states_critic.shape[3:])
-        )
+        # if self._mixed_obs:
+        #     critic_obs = {}
+        #     policy_obs = {}
+        #     for key in self.critic_obs.keys():
+        #         if len(self.critic_obs[key].shape) == 6:
+        #             critic_obs[key] = (
+        #                 self.critic_obs[key][:-1]
+        #                 .transpose(1, 2, 0, 3, 4, 5)
+        #                 .reshape(-1, *self.critic_obs[key].shape[3:])
+        #             )
+        #         elif len(self.critic_obs[key].shape) == 5:
+        #             critic_obs[key] = (
+        #                 self.critic_obs[key][:-1]
+        #                 .transpose(1, 2, 0, 3, 4)
+        #                 .reshape(-1, *self.critic_obs[key].shape[3:])
+        #             )
+        #         else:
+        #             critic_obs[key] = _cast(self.critic_obs[key][:-1])
 
-        if self.action_masks is not None:
-            action_masks = _cast(self.action_masks[:-1])
+        #     for key in self.policy_obs.keys():
+        #         if len(self.policy_obs[key].shape) == 6:
+        #             policy_obs[key] = (
+        #                 self.policy_obs[key][:-1]
+        #                 .transpose(1, 2, 0, 3, 4, 5)
+        #                 .reshape(-1, *self.policy_obs[key].shape[3:])
+        #             )
+        #         elif len(self.policy_obs[key].shape) == 5:
+        #             policy_obs[key] = (
+        #                 self.policy_obs[key][:-1]
+        #                 .transpose(1, 2, 0, 3, 4)
+        #                 .reshape(-1, *self.policy_obs[key].shape[3:])
+        #             )
+        #         else:
+        #             policy_obs[key] = _cast(self.policy_obs[key][:-1])
+        # else:
+        #     if len(self.critic_obs.shape) > 4:
+        #         critic_obs = (
+        #             self.critic_obs[:-1]
+        #             .transpose(1, 2, 0, 3, 4, 5)
+        #             .reshape(-1, *self.critic_obs.shape[3:])
+        #         )
+        #         policy_obs = (
+        #             self.policy_obs[:-1]
+        #             .transpose(1, 2, 0, 3, 4, 5)
+        #             .reshape(-1, *self.policy_obs.shape[3:])
+        #         )
+        #     else:
+        #         critic_obs = _cast(self.critic_obs[:-1])
+        #         policy_obs = _cast(self.policy_obs[:-1])
 
-        for indices in sampler:
-            if self._mixed_obs:
-                critic_obs_batch = defaultdict(list)
-                policy_obs_batch = defaultdict(list)
-            else:
-                critic_obs_batch = []
-                policy_obs_batch = []
+        # actions = _cast(self.actions)
+        # action_log_probs = _cast(self.action_log_probs)
+        # advantages = _cast(advantages)
+        # value_preds = _cast(self.value_preds[:-1])
+        # returns = _cast(self.returns[:-1])
+        # masks = _cast(self.masks[:-1])
+        # active_masks = _cast(self.active_masks[:-1])
 
-            rnn_states_batch = []
-            rnn_states_critic_batch = []
-            actions_batch = []
-            action_masks_batch = []
-            value_preds_batch = []
-            return_batch = []
-            masks_batch = []
-            active_masks_batch = []
-            old_action_log_probs_batch = []
-            adv_targ = []
+        # rnn_states = (
+        #     self.rnn_states[:-1]
+        #     .transpose(1, 2, 0, 3, 4)
+        #     .reshape(-1, *self.rnn_states.shape[3:])
+        # )
+        # rnn_states_critic = (
+        #     self.rnn_states_critic[:-1]
+        #     .transpose(1, 2, 0, 3, 4)
+        #     .reshape(-1, *self.rnn_states_critic.shape[3:])
+        # )
 
-            for index in indices:
-                ind = index * data_chunk_length
-                # size [T+1 N M Dim]-->[T N M Dim]-->[N,M,T,Dim]-->[N*M*T,Dim]-->[L,Dim]
-                if self._mixed_obs:
-                    for key in critic_obs.keys():
-                        critic_obs_batch[key].append(
-                            critic_obs[key][ind : ind + data_chunk_length]
-                        )
-                    for key in policy_obs.keys():
-                        policy_obs_batch[key].append(
-                            policy_obs[key][ind : ind + data_chunk_length]
-                        )
-                else:
-                    critic_obs_batch.append(critic_obs[ind : ind + data_chunk_length])
-                    policy_obs_batch.append(policy_obs[ind : ind + data_chunk_length])
+        # if self.action_masks is not None:
+        #     action_masks = _cast(self.action_masks[:-1])
 
-                actions_batch.append(actions[ind : ind + data_chunk_length])
-                if self.action_masks is not None:
-                    action_masks_batch.append(
-                        action_masks[ind : ind + data_chunk_length]
-                    )
-                value_preds_batch.append(value_preds[ind : ind + data_chunk_length])
-                return_batch.append(returns[ind : ind + data_chunk_length])
-                masks_batch.append(masks[ind : ind + data_chunk_length])
-                active_masks_batch.append(active_masks[ind : ind + data_chunk_length])
-                old_action_log_probs_batch.append(
-                    action_log_probs[ind : ind + data_chunk_length]
-                )
-                adv_targ.append(advantages[ind : ind + data_chunk_length])
-                # size [T+1 N M Dim]-->[T N M Dim]-->[N M T Dim]-->[N*M*T,Dim]-->[1,Dim]
-                rnn_states_batch.append(rnn_states[ind])
-                rnn_states_critic_batch.append(rnn_states_critic[ind])
+        # for indices in sampler:
+        #     if self._mixed_obs:
+        #         critic_obs_batch = defaultdict(list)
+        #         policy_obs_batch = defaultdict(list)
+        #     else:
+        #         critic_obs_batch = []
+        #         policy_obs_batch = []
 
-            L, N = data_chunk_length, mini_batch_size
+        #     rnn_states_batch = []
+        #     rnn_states_critic_batch = []
+        #     actions_batch = []
+        #     action_masks_batch = []
+        #     value_preds_batch = []
+        #     return_batch = []
+        #     masks_batch = []
+        #     active_masks_batch = []
+        #     old_action_log_probs_batch = []
+        #     adv_targ = []
 
-            # These are all from_numpys of size (L, N, Dim)
-            if self._mixed_obs:
-                for key in critic_obs_batch.keys():
-                    critic_obs_batch[key] = np.stack(critic_obs_batch[key], axis=1)
-                for key in policy_obs_batch.keys():
-                    policy_obs_batch[key] = np.stack(policy_obs_batch[key], axis=1)
-            else:
-                critic_obs_batch = np.stack(critic_obs_batch, axis=1)
-                policy_obs_batch = np.stack(policy_obs_batch, axis=1)
+        #     for index in indices:
+        #         ind = index * data_chunk_length
+        #         # size [T+1 N M Dim]-->[T N M Dim]-->[N,M,T,Dim]-->[N*M*T,Dim]-->[L,Dim]
+        #         if self._mixed_obs:
+        #             for key in critic_obs.keys():
+        #                 critic_obs_batch[key].append(
+        #                     critic_obs[key][ind : ind + data_chunk_length]
+        #                 )
+        #             for key in policy_obs.keys():
+        #                 policy_obs_batch[key].append(
+        #                     policy_obs[key][ind : ind + data_chunk_length]
+        #                 )
+        #         else:
+        #             critic_obs_batch.append(critic_obs[ind : ind + data_chunk_length])
+        #             policy_obs_batch.append(policy_obs[ind : ind + data_chunk_length])
 
-            actions_batch = np.stack(actions_batch, axis=1)
-            if self.action_masks is not None:
-                action_masks_batch = np.stack(action_masks_batch, axis=1)
-            value_preds_batch = np.stack(value_preds_batch, axis=1)
-            return_batch = np.stack(return_batch, axis=1)
-            masks_batch = np.stack(masks_batch, axis=1)
-            active_masks_batch = np.stack(active_masks_batch, axis=1)
-            old_action_log_probs_batch = np.stack(old_action_log_probs_batch, axis=1)
-            adv_targ = np.stack(adv_targ, axis=1)
+        #         actions_batch.append(actions[ind : ind + data_chunk_length])
+        #         if self.action_masks is not None:
+        #             action_masks_batch.append(
+        #                 action_masks[ind : ind + data_chunk_length]
+        #             )
+        #         value_preds_batch.append(value_preds[ind : ind + data_chunk_length])
+        #         return_batch.append(returns[ind : ind + data_chunk_length])
+        #         masks_batch.append(masks[ind : ind + data_chunk_length])
+        #         active_masks_batch.append(active_masks[ind : ind + data_chunk_length])
+        #         old_action_log_probs_batch.append(
+        #             action_log_probs[ind : ind + data_chunk_length]
+        #         )
+        #         adv_targ.append(advantages[ind : ind + data_chunk_length])
+        #         # size [T+1 N M Dim]-->[T N M Dim]-->[N M T Dim]-->[N*M*T,Dim]-->[1,Dim]
+        #         rnn_states_batch.append(rnn_states[ind])
+        #         rnn_states_critic_batch.append(rnn_states_critic[ind])
 
-            # States is just a (N, -1) from_numpy
-            rnn_states_batch = np.stack(rnn_states_batch).reshape(
-                N, *self.rnn_states.shape[3:]
-            )
-            rnn_states_critic_batch = np.stack(rnn_states_critic_batch).reshape(
-                N, *self.rnn_states_critic.shape[3:]
-            )
+        #     L, N = data_chunk_length, mini_batch_size
 
-            # Flatten the (L, N, ...) from_numpys to (L * N, ...)
-            if self._mixed_obs:
-                for key in critic_obs_batch.keys():
-                    critic_obs_batch[key] = _flatten(L, N, critic_obs_batch[key])
-                for key in policy_obs_batch.keys():
-                    policy_obs_batch[key] = _flatten(L, N, policy_obs_batch[key])
-            else:
-                critic_obs_batch = _flatten(L, N, critic_obs_batch)
-                policy_obs_batch = _flatten(L, N, policy_obs_batch)
-            actions_batch = _flatten(L, N, actions_batch)
-            if self.action_masks is not None:
-                action_masks_batch = _flatten(L, N, action_masks_batch)
-            else:
-                action_masks_batch = None
-            value_preds_batch = _flatten(L, N, value_preds_batch)
-            return_batch = _flatten(L, N, return_batch)
-            masks_batch = _flatten(L, N, masks_batch)
-            active_masks_batch = _flatten(L, N, active_masks_batch)
-            old_action_log_probs_batch = _flatten(L, N, old_action_log_probs_batch)
-            adv_targ = _flatten(L, N, adv_targ)
+        #     # These are all from_numpys of size (L, N, Dim)
+        #     if self._mixed_obs:
+        #         for key in critic_obs_batch.keys():
+        #             critic_obs_batch[key] = np.stack(critic_obs_batch[key], axis=1)
+        #         for key in policy_obs_batch.keys():
+        #             policy_obs_batch[key] = np.stack(policy_obs_batch[key], axis=1)
+        #     else:
+        #         critic_obs_batch = np.stack(critic_obs_batch, axis=1)
+        #         policy_obs_batch = np.stack(policy_obs_batch, axis=1)
 
-            yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
+        #     actions_batch = np.stack(actions_batch, axis=1)
+        #     if self.action_masks is not None:
+        #         action_masks_batch = np.stack(action_masks_batch, axis=1)
+        #     value_preds_batch = np.stack(value_preds_batch, axis=1)
+        #     return_batch = np.stack(return_batch, axis=1)
+        #     masks_batch = np.stack(masks_batch, axis=1)
+        #     active_masks_batch = np.stack(active_masks_batch, axis=1)
+        #     old_action_log_probs_batch = np.stack(old_action_log_probs_batch, axis=1)
+        #     adv_targ = np.stack(adv_targ, axis=1)
+
+        #     # States is just a (N, -1) from_numpy
+        #     rnn_states_batch = np.stack(rnn_states_batch).reshape(
+        #         N, *self.rnn_states.shape[3:]
+        #     )
+        #     rnn_states_critic_batch = np.stack(rnn_states_critic_batch).reshape(
+        #         N, *self.rnn_states_critic.shape[3:]
+        #     )
+
+        #     # Flatten the (L, N, ...) from_numpys to (L * N, ...)
+        #     if self._mixed_obs:
+        #         for key in critic_obs_batch.keys():
+        #             critic_obs_batch[key] = _flatten(L, N, critic_obs_batch[key])
+        #         for key in policy_obs_batch.keys():
+        #             policy_obs_batch[key] = _flatten(L, N, policy_obs_batch[key])
+        #     else:
+        #         critic_obs_batch = _flatten(L, N, critic_obs_batch)
+        #         policy_obs_batch = _flatten(L, N, policy_obs_batch)
+        #     actions_batch = _flatten(L, N, actions_batch)
+        #     if self.action_masks is not None:
+        #         action_masks_batch = _flatten(L, N, action_masks_batch)
+        #     else:
+        #         action_masks_batch = None
+        #     value_preds_batch = _flatten(L, N, value_preds_batch)
+        #     return_batch = _flatten(L, N, return_batch)
+        #     masks_batch = _flatten(L, N, masks_batch)
+        #     active_masks_batch = _flatten(L, N, active_masks_batch)
+        #     old_action_log_probs_batch = _flatten(L, N, old_action_log_probs_batch)
+        #     adv_targ = _flatten(L, N, adv_targ)
+
+        #     yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch

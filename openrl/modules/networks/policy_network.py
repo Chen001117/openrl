@@ -114,6 +114,28 @@ class PolicyNetwork(BasePolicyNetwork):
                 self.v_out = init_(nn.Linear(input_size, 1))
         if use_half:
             self.half()
+            
+        # self.ref_base = (
+        #         CNNBase(cfg, policy_obs_shape)
+        #         if len(policy_obs_shape) == 3
+        #         else MLPBase(
+        #             cfg,
+        #             policy_obs_shape,
+        #             use_attn_internal=cfg.use_attn_internal,
+        #             use_cat_self=True,
+        #         )
+        #     )    
+        # self.ref_rnn = RNNLayer(
+        #         input_size,
+        #         self.hidden_size,
+        #         self._recurrent_N,
+        #         self._use_orthogonal,
+        #         rnn_type=cfg.rnn_type,
+        #     )
+        # self.ref_act = ACTLayer(action_space, input_size, self._use_orthogonal, self._gain)
+            
+        # self.update_model()    
+            
         self.to(device)
 
     def forward(self, forward_type, *args, **kwargs):
@@ -121,9 +143,50 @@ class PolicyNetwork(BasePolicyNetwork):
             return self.forward_original(*args, **kwargs)
         elif forward_type == "eval_actions":
             return self.eval_actions(*args, **kwargs)
+        elif forward_type == "get_log_prob":
+            return self.get_action_log_prob(*args, **kwargs)
         else:
             raise NotImplementedError
 
+    def update_model(self):
+        self.ref_base.load_state_dict(self.base.state_dict())
+        self.ref_rnn.load_state_dict(self.rnn.state_dict())
+        self.ref_act.load_state_dict(self.act.state_dict())
+
+    @torch.no_grad()
+    def get_action_log_prob(
+        self, obs, rnn_states, action, masks, action_masks=None, active_masks=None
+    ):
+        if self._mixed_obs:
+            for key in obs.keys():
+                obs[key] = check(obs[key], self.use_half, self.tpdv)
+        else:
+            obs = check(obs, self.use_half, self.tpdv)
+
+        rnn_states = check(rnn_states, self.use_half, self.tpdv)
+        action = check(action, self.use_half, self.tpdv)
+        masks = check(masks, self.use_half, self.tpdv)
+
+        if action_masks is not None:
+            action_masks = check(action_masks, self.use_half, self.tpdv)
+
+        if active_masks is not None:
+            active_masks = check(active_masks, self.use_half, self.tpdv)
+
+        actor_features = self.base(obs)
+
+        if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+            actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+
+        action_log_probs, _ = self.act.evaluate_actions(
+            actor_features,
+            action,
+            action_masks,
+            active_masks=active_masks if self._use_policy_active_masks else None,
+        )
+
+        return action_log_probs
+    
     def forward_original(
         self, raw_obs, rnn_states, masks, action_masks=None, deterministic=False
     ):
