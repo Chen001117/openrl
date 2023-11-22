@@ -1071,52 +1071,53 @@ class ReplayData(object):
 
         epi_len, env_num, agent_num, _ = policy_obs.shape
 
-        # for smac
-        order = np.arange(agent_num)
-        np.random.shuffle(order)
-        policy_obs = policy_obs.reshape([epi_len*env_num*agent_num, -1])
-        enemy = policy_obs[:,4:49].copy()
-        enemy = enemy.reshape([epi_len*env_num*agent_num, self.num_agents, 9])
-        enemy = np.transpose(enemy, [1,0,2])
-        enemy = enemy[order]
-        enemy = np.transpose(enemy, [1,0,2])
-        enemy = enemy.reshape([epi_len*env_num*agent_num, 45])
-        policy_obs[:,4:49] = enemy
-        policy_obs = policy_obs.reshape([epi_len*env_num*agent_num, -1])
-        allies = policy_obs[:,49:85].copy()
-        allies = allies.reshape([epi_len*env_num, agent_num, self.num_agents-1, 9])
-        for agent_idx in range(self.num_agents):
-            agent_order = order.copy()
-            agent_order = np.delete(agent_order, np.argwhere(agent_order==agent_idx))
-            agent_order = np.where(agent_order>agent_idx,agent_order-1,agent_order)
-            ally = allies[:,agent_idx]
-            ally = np.transpose(ally, [1,0,2])
-            ally = ally[agent_order]
-            ally = np.transpose(ally, [1,0,2])
-            ally = ally.reshape([epi_len*env_num, self.num_agents-1, 9])
-            allies[:,agent_idx] = ally
-        allies = allies.reshape([epi_len*env_num*agent_num, -1])
-        policy_obs[:,49:85] = allies
-        policy_obs = policy_obs.reshape([epi_len, env_num, agent_num, -1])
+        # # for smac
+        # order = np.arange(agent_num)
+        # np.random.shuffle(order)
+        # policy_obs = policy_obs.reshape([epi_len*env_num*agent_num, -1])
+        # enemy = policy_obs[:,4:49].copy()
+        # enemy = enemy.reshape([epi_len*env_num*agent_num, self.num_agents, 9])
+        # enemy = np.transpose(enemy, [1,0,2])
+        # enemy = enemy[order]
+        # enemy = np.transpose(enemy, [1,0,2])
+        # enemy = enemy.reshape([epi_len*env_num*agent_num, 45])
+        # policy_obs[:,4:49] = enemy
+        # policy_obs = policy_obs.reshape([epi_len*env_num*agent_num, -1])
+        # allies = policy_obs[:,49:85].copy()
+        # allies = allies.reshape([epi_len*env_num, agent_num, self.num_agents-1, 9])
+        # for agent_idx in range(self.num_agents):
+        #     agent_order = order.copy()
+        #     agent_order = np.delete(agent_order, np.argwhere(agent_order==agent_idx))
+        #     agent_order = np.where(agent_order>agent_idx,agent_order-1,agent_order)
+        #     ally = allies[:,agent_idx]
+        #     ally = np.transpose(ally, [1,0,2])
+        #     ally = ally[agent_order]
+        #     ally = np.transpose(ally, [1,0,2])
+        #     ally = ally.reshape([epi_len*env_num, self.num_agents-1, 9])
+        #     allies[:,agent_idx] = ally
+        # allies = allies.reshape([epi_len*env_num*agent_num, -1])
+        # policy_obs[:,49:85] = allies
+        # policy_obs = policy_obs.reshape([epi_len, env_num, agent_num, -1])
 
-        order = np.arange(agent_num)
-        np.random.shuffle(order)
-        critic_obs = critic_obs.reshape([epi_len*env_num*agent_num, -1])
-        enemy = critic_obs[:,40:75].copy()
-        enemy = enemy.reshape([epi_len*env_num*agent_num, self.num_agents, 7])
-        enemy = np.transpose(enemy, [1,0,2])
-        enemy = enemy[order]
-        enemy = np.transpose(enemy, [1,0,2])
-        enemy = enemy.reshape([epi_len*env_num*agent_num, 35])
-        critic_obs[:,40:75] = enemy
-        allies = critic_obs[:,0:40].copy()
-        allies = allies.reshape([epi_len*env_num*agent_num, self.num_agents, 8])
-        allies = np.transpose(allies, [1,0,2])
-        allies = allies[order]
-        allies = np.transpose(allies, [1,0,2])
-        allies = allies.reshape([epi_len*env_num*agent_num, 40])
-        critic_obs[:,0:40] = allies
-        critic_obs = critic_obs.reshape([epi_len, env_num, agent_num, -1])
+        # for agent_id in range(self.num_agents):
+        #     order = np.arange(agent_num)
+        #     np.random.shuffle(order)
+        #     critic_o = critic_obs[:,:,agent_id].copy()
+        #     critic_o = critic_o.reshape([epi_len*env_num, -1])
+        #     enemy = critic_o[:,40:75].copy()
+        #     enemy = enemy.reshape([epi_len*env_num, self.num_agents, 7])
+        #     enemy = np.transpose(enemy, [1,0,2])
+        #     enemy = enemy[order]
+        #     enemy = np.transpose(enemy, [1,0,2])
+        #     enemy = enemy.reshape([epi_len, env_num, 35])
+        #     critic_obs[:,:,agent_id,40:75] = enemy
+        #     allies = critic_o[:,0:40].copy()
+        #     allies = allies.reshape([epi_len*env_num, self.num_agents, 8])
+        #     allies = np.transpose(allies, [1,0,2])
+        #     allies = allies[order]
+        #     allies = np.transpose(allies, [1,0,2])
+        #     allies = allies.reshape([epi_len, env_num, 40])
+        #     critic_obs[:,:,agent_id,0:40] = allies
 
         # # for mpe
         # order = np.arange(agent_num)

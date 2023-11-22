@@ -275,48 +275,36 @@ class PPOAlgorithm(BaseAlgorithm):
         #     action_masks_batch,
         #     active_masks_batch,
         # )
-        
-        if self.last_logp is None:
-            self.last_logp = old_action_log_probs_batch
 
-        # if self.use_joint_action_loss:
-        #     action_log_probs_copy = (
-        #         action_log_probs.reshape(-1, self.agent_num, action_log_probs.shape[-1])
-        #         .sum(dim=(1, -1), keepdim=True)
-        #         .reshape(-1, 1)
-        #     )
-        #     old_action_log_probs_batch_copy = (
-        #         old_action_log_probs_batch.reshape(
-        #             -1, self.agent_num, old_action_log_probs_batch.shape[-1]
-        #         )
-        #         .sum(dim=(1, -1), keepdim=True)
-        #         .reshape(-1, 1)
-        #     )
+        if self.use_joint_action_loss:
+            action_log_probs_copy = (
+                action_log_probs.reshape(-1, self.agent_num, action_log_probs.shape[-1])
+                .sum(dim=(1, -1), keepdim=True)
+                .reshape(-1, 1)
+            )
+            old_action_log_probs_batch_copy = (
+                old_action_log_probs_batch.reshape(
+                    -1, self.agent_num, old_action_log_probs_batch.shape[-1]
+                )
+                .sum(dim=(1, -1), keepdim=True)
+                .reshape(-1, 1)
+            )
 
-        #     active_masks_batch = active_masks_batch.reshape(-1, self.agent_num, 1)
-        #     active_masks_batch = active_masks_batch[:, 0, :]
+            active_masks_batch = active_masks_batch.reshape(-1, self.agent_num, 1)
+            active_masks_batch = active_masks_batch[:, 0, :]
 
-        #     ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
-        # else:
-        #     ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
+            ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
+        else:
+            ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
 
-        # if self.dual_clip_ppo:
-        #     ratio = torch.min(ratio, self.dual_clip_coeff)
-
-        # surr1 = ratio * adv_targ
-        # surr2 = (
-        #     torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
-        # )
-
-        # surr_final = torch.min(surr1, surr2)
-
-        # clip_param = 100.
-        ratio_ppo = torch.exp(self.last_logp - old_action_log_probs_batch)
-        ratio_aug = torch.exp(action_log_probs - self.last_logp)
-        ratio = ratio_aug * ratio_ppo
+        if self.dual_clip_ppo:
+            ratio = torch.min(ratio, self.dual_clip_coeff)
 
         surr1 = ratio * adv_targ
-        surr2 = torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
+        surr2 = (
+            torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
+        )
+
         surr_final = torch.min(surr1, surr2)
 
         if self._use_policy_active_masks:
@@ -348,9 +336,9 @@ class PPOAlgorithm(BaseAlgorithm):
         else:
             policy_loss = policy_action_loss
 
-        ratio_aux = torch.exp(self.last_logp - old_action_log_probs_batch)
-        loss_aux = ratio_aux * (-action_log_probs)
-        policy_loss = policy_loss + loss_aux.mean() * 0.1
+        # ratio_aux = torch.exp(logp - old_action_log_probs_batch)
+        # loss_aux = ratio_aux * (-action_log_probs)
+        # policy_loss = policy_loss + loss_aux.mean() * 0.1
 
         # critic update
         if self._use_share_model:
@@ -371,7 +359,8 @@ class PPOAlgorithm(BaseAlgorithm):
             policy_loss, dist_entropy, value_loss, turn_on
         )
         
-        self.last_logp = action_log_probs.detach()
+        ratio_aug = ratio
+        ratio_ppo = ratio
         
         return loss_list, value_loss, policy_loss, dist_entropy, ratio, ratio_aug, ratio_ppo
 
@@ -436,7 +425,6 @@ class PPOAlgorithm(BaseAlgorithm):
             train_info["reduced_value_loss"] = 0
             train_info["reduced_policy_loss"] = 0
 
-        self.last_logp = None
         for _ in range(self.ppo_epoch):
             data_generator = self.get_data_generator(buffer, advantages)
 
