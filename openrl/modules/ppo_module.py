@@ -230,6 +230,7 @@ class PPOModule(RLModule):
                 active_masks,
             )
         else:
+            
             episode_start_idx = np.where(masks==0)[0]
             action_obs = action_obs.astype("long")
 
@@ -237,7 +238,11 @@ class PPOModule(RLModule):
                 critic_obs, action_obs, rnn_states_encoder, masks, episode_start_idx, action_masks
             )
             
-            distribution = Normal(mu, logvar.exp().sqrt())
+            sigma = critic_obs[:,-1:]
+            sigma = np.repeat(sigma, mu.shape[1], -1)
+            sigma = torch.from_numpy(sigma).to(mu.device)
+            
+            distribution = Normal(mu, sigma)
             z_log_prob = distribution.log_prob(latent_code)
             z_log_prob = z_log_prob.sum(-1, keepdims=True)
             # latent_code = sample_pos * torch.exp(logvar/2) + mu
@@ -256,8 +261,9 @@ class PPOModule(RLModule):
                 active_masks,
             )
             action_log_probs += z_log_prob
-
-        return values, action_log_probs, dist_entropy, policy_values, mu, logvar
+            
+        return values, action_log_probs, dist_entropy, policy_values, mu, sigma
+        # return values, action_log_probs, dist_entropy, policy_values, mu, logvar
 
     def act(self, latent_code, obs, rnn_states_actor, masks, action_masks=None, deterministic=False):
         if self.share_model:

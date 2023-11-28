@@ -18,7 +18,7 @@ from openrl.envs.common import build_envs
 from openrl.envs.smac.smacv2_env.smac_env import SMACEnv
 
 
-def smac_make(id, render_mode, disable_env_checker, **kwargs):
+def smac_make(env_id, id, render_mode, disable_env_checker, **kwargs):
     cfg_parser = create_config_parser()
     cfg_parser.add_argument(
         "--map_name", type=str, default=id, help="Which smac map to run on"
@@ -26,7 +26,7 @@ def smac_make(id, render_mode, disable_env_checker, **kwargs):
 
     cfg = cfg_parser.parse_args([])
 
-    env = SMACEnv(cfg=cfg)
+    env = SMACEnv(env_id, cfg=cfg)
 
     return env
 

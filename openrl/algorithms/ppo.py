@@ -398,6 +398,7 @@ class PPOAlgorithm(BaseAlgorithm):
             value_normalizer = self.algo_module.models["critic"].module.value_normalizer
         else:
             value_normalizer = self.algo_module.get_critic_value_normalizer()
+        
         value_loss = self.cal_value_loss(
             value_normalizer,
             values,
@@ -411,34 +412,34 @@ class PPOAlgorithm(BaseAlgorithm):
             policy_loss, dist_entropy, value_loss, turn_on
         )
 
-        # encoder update
-        if self._use_share_model:
-            raise NotImplementedError
-        elif isinstance(self.algo_module.models["encoder"], DistributedDataParallel):
-            raise NotImplementedError
+        # # encoder update
+        # if self._use_share_model:
+        #     raise NotImplementedError
+        # elif isinstance(self.algo_module.models["encoder"], DistributedDataParallel):
+        #     raise NotImplementedError
 
-        encoder_loss = torch.sum(1 + logvar - mu**2 - torch.exp(logvar), 1)
-        encoder_loss = torch.mean(-0.5 * encoder_loss, 0)
-        loss_list.append(encoder_loss * self.value_loss_coef * 3e-4)
-        latent_sigma = logvar.exp().mean()
+        # encoder_loss = torch.sum(1 + logvar - mu**2 - torch.exp(logvar), 1)
+        # encoder_loss = torch.mean(-0.5 * encoder_loss, 0)
+        # loss_list.append(encoder_loss * self.value_loss_coef * 3e-4)
+        latent_sigma = logvar.mean()
 
-        # off-policy critic update
-        if self.train_ppo_cnt >= self.buffer_length:
-            offp_policy_values = self.algo_module.get_fixz_value(
-                offp_latent_code_batch,
-                offp_critic_obs_batch,
-                offp_rnn_states_critic_batch,
-                offp_masks_batch,
-            )
-            offp_value_loss = self.cal_value_loss(
-                value_normalizer,
-                offp_policy_values,
-                offp_value_preds_batch,
-                offp_return_batch,
-                offp_active_masks_batch,
-                update=False,
-            )
-            loss_list.append(offp_value_loss * self.value_loss_coef * 0.)
+        # # off-policy critic update
+        # if self.train_ppo_cnt >= self.buffer_length:
+        #     offp_policy_values = self.algo_module.get_fixz_value(
+        #         offp_latent_code_batch,
+        #         offp_critic_obs_batch,
+        #         offp_rnn_states_critic_batch,
+        #         offp_masks_batch,
+        #     )
+        #     offp_value_loss = self.cal_value_loss(
+        #         value_normalizer,
+        #         offp_policy_values,
+        #         offp_value_preds_batch,
+        #         offp_return_batch,
+        #         offp_active_masks_batch,
+        #         update=False,
+        #     )
+        #     loss_list.append(offp_value_loss * self.value_loss_coef * 0.)
 
         return loss_list, value_loss, policy_loss, dist_entropy, ratio, latent_sigma
 

@@ -281,19 +281,25 @@ class OnPolicyDriver(RLDriver):
             action_masks=self.buffer.data.get_batch_data("action_masks", step),
         )
         
-        rnn_states_encoder = np.array(np.split(_t2n(rnn_states_encoder), self.n_rollout_threads))
-
-        sampled_pnt= np.random.normal(np.zeros_like(actions_batch_data), np.ones_like(actions_batch_data))
-        latent_code = sampled_pnt * np.exp(_t2n(logvar)/2) + _t2n(mu)
+        critic_obs = self.buffer.data.get_batch_data("critic_obs", step)
+        sigma = critic_obs[:,-1:]
+        sigma = np.repeat(sigma, mu.shape[1], -1)
         
-        distribution = Normal(mu.cpu(), logvar.cpu().exp().sqrt())
+        rnn_states_encoder = np.array(np.split(_t2n(rnn_states_encoder), self.n_rollout_threads))
+        
+        sampled_pnt= np.random.normal(np.zeros_like(actions_batch_data), np.ones_like(actions_batch_data))
+        # latent_code = sampled_pnt * np.exp(_t2n(logvar)/2) + _t2n(mu)
+        latent_code = sampled_pnt * sigma + _t2n(mu)
+        
+        # distribution = Normal(mu.cpu(), logvar.cpu().exp().sqrt())
+        sigma = torch.from_numpy(sigma)
+        distribution = Normal(mu.cpu(), sigma)
         log_prob = distribution.log_prob(torch.from_numpy(latent_code))
         log_prob = log_prob.sum(-1, keepdims=True)
         log_prob = np.array(np.split(log_prob.numpy(), self.n_rollout_threads))
-
+        
         latent_code = np.array(np.split(latent_code, self.n_rollout_threads))
         sampled_pnt = np.array(np.split(sampled_pnt, self.n_rollout_threads))
-
         
         return latent_code, sampled_pnt, rnn_states_encoder, log_prob
 

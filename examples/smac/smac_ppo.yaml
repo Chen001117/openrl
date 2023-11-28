@@ -23,15 +23,15 @@ wandb_entity: cwz19
 vec_info_class:
   id: "SMACInfo"
 
-callbacks:
-  - id: "EvalCallback"
-    args: {
-        "eval_env": { "id": "10gen_protoss","env_num": 8}, # how many envs to set up for evaluation
-        "n_eval_episodes": 32, # how many episodes to run for each evaluation
-        "eval_freq": 12500, # how often to run evaluation
-        "log_path": "./results/eval_log_path", # where to save the evaluation results
-        "best_model_save_path": "./results/best_model/", # where to save the best model
-        "deterministic": True, # whether to use deterministic action
-        "render": False, # whether to render the env
-        "asynchronous": True, # whether to run evaluation asynchronously
-    }
+# callbacks:
+#   - id: "EvalCallback"
+#     args: {
+#         "eval_env": { "id": "10gen_protoss","env_num": 8}, # how many envs to set up for evaluation
+#         "n_eval_episodes": 32, # how many episodes to run for each evaluation
+#         "eval_freq": 12500, # how often to run evaluation
+#         "log_path": "./results/eval_log_path", # where to save the evaluation results
+#         "best_model_save_path": "./results/best_model/", # where to save the best model
+#         "deterministic": True, # whether to use deterministic action
+#         "render": False, # whether to render the env
+#         "asynchronous": True, # whether to run evaluation asynchronously
+#     }

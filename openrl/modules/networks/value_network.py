@@ -60,7 +60,7 @@ class ValueNetwork(BaseValueNetwork):
         ]
 
         critic_obs_shape = get_critic_obs_space(input_space)
-        critic_obs_shape = (critic_obs_shape[0]+self.latent_dim,)
+        critic_obs_shape = (critic_obs_shape[0]+self.latent_dim-1,)
 
         if "Dict" in critic_obs_shape.__class__.__name__:
             self._mixed_obs = True
@@ -123,7 +123,7 @@ class ValueNetwork(BaseValueNetwork):
         masks = check(masks).to(**self.tpdv)
 
         critic_obs = torch.cat([critic_obs, latent_code], -1)
-        critic_features = self.base(critic_obs)
+        critic_features = self.base(critic_obs[:,:-1])
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             critic_features, rnn_states = self.rnn(critic_features, rnn_states, masks)

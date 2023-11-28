@@ -580,7 +580,6 @@ class StarCraft2Env(MultiAgentEnv):
                     60, "*"
                 )
             )
-        return self.get_obs(), self.get_state()
 
     def _restart(self):
         """Restart the environment by killing all units on the map.

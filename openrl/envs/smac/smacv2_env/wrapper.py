@@ -2,9 +2,10 @@ from openrl.envs.smac.smacv2_env.distributions import get_distribution
 from openrl.envs.smac.smacv2_env.starcraft2 import StarCraft2Env, CannotResetException
 from openrl.envs.smac.smacv2_env.multiagentenv import MultiAgentEnv
 
+import numpy as np
 
 class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
-    def __init__(self, **kwargs):
+    def __init__(self, env_id, **kwargs):
         self.distribution_config = kwargs["capability_config"]
         self.env_key_to_distribution_map = {}
         self._parse_distribution_config()
@@ -13,6 +14,9 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             self.distribution_config.keys()
             == kwargs["capability_config"].keys()
         ), "Must give distribution config and capability config the same keys"
+        
+        self.env_id = env_id
+        self.sigma = np.random.rand() * 0.35 + 0.05 #(env_id + 1) * 0.05
 
     def _parse_distribution_config(self):
         for env_key, config in self.distribution_config.items():
@@ -26,15 +30,13 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             self.env_key_to_distribution_map[env_key] = distribution
 
     def reset(self):
-        try:
-            reset_config = {}
-            for distribution in self.env_key_to_distribution_map.values():
-                reset_config = {**reset_config, **distribution.generate()}
+        
+        reset_config = {}
+        for distribution in self.env_key_to_distribution_map.values():
+            reset_config = {**reset_config, **distribution.generate()}
 
-            return self.env.reset(reset_config)
-        except CannotResetException as cre:
-            # just retry
-            self.reset()
+        self.env.reset(reset_config)
+        return self.get_obs(), self.get_state()
 
     def __getattr__(self, name):
         if hasattr(self.env, name):
@@ -43,13 +45,19 @@ class StarCraftCapabilityEnvWrapper(MultiAgentEnv):
             raise AttributeError
 
     def get_obs(self):
-        return self.env.get_obs()
+        obs = np.array(self.env.get_obs())
+        sigma = np.ones([len(obs), 1]) * self.sigma
+        obs = np.concatenate([obs, sigma], -1)
+        return obs
+    
+    def get_state(self):
+        state = np.array(self.env.get_state())
+        sigma = np.array([self.sigma])
+        state = np.concatenate([state, sigma], -1)
+        return state
 
     def get_obs_feature_names(self):
         return self.env.get_obs_feature_names()
-
-    def get_state(self):
-        return self.env.get_state()
 
     def get_state_feature_names(self):
         return self.env.get_state_feature_names()

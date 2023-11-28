@@ -59,7 +59,7 @@ class PolicyNetwork(BasePolicyNetwork):
         self.latent_dim = 16
 
         policy_obs_shape = get_policy_obs_space(input_space)
-        policy_obs_shape = (policy_obs_shape[0]+self.latent_dim,)
+        policy_obs_shape = (policy_obs_shape[0]+self.latent_dim-1,)
 
         if "Dict" in policy_obs_shape.__class__.__name__:
             self._mixed_obs = True
@@ -148,7 +148,7 @@ class PolicyNetwork(BasePolicyNetwork):
             action_masks = check(action_masks, self.use_half, self.tpdv)
 
         policy_obs = torch.cat([latent_code, policy_obs], -1)
-        actor_features = self.base(policy_obs)
+        actor_features = self.base(policy_obs[:,:-1])
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
@@ -183,7 +183,7 @@ class PolicyNetwork(BasePolicyNetwork):
             active_masks = check(active_masks, self.use_half, self.tpdv)
         
         obs = torch.cat([latent_code, obs], -1)
-        actor_features = self.base(obs)
+        actor_features = self.base(obs[:,:-1])
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
