@@ -48,30 +48,6 @@ def train():
     return agent
 
 
-def evaluation(agent):
-    env_num = 2
-    env = make(
-        "10gen_protoss",
-        env_num=env_num,
-        make_custom_envs=make_smac_envs,
-    )
-    # agent.load("./ppo_agent/")
-    agent.set_env(env)
-    obs, info = env.reset(seed=0)
-    done = False
-    step = 0
-    total_reward = 0
-    while not np.any(done):
-        # Based on environmental observation input, predict next action.
-        action, _ = agent.act(obs, info=info, deterministic=True)
-        obs, r, done, info = env.step(action)
-        step += 1
-        total_reward += np.mean(r)
-        print(f"step:{step}, total_reward: {total_reward}")
-    print(f"total_reward: {total_reward}")
-    env.close()
-
-
 if __name__ == "__main__":
     from absl import flags
 
@@ -79,4 +55,3 @@ if __name__ == "__main__":
     FLAGS([""])
 
     agent = train()
-    # evaluation(agent)

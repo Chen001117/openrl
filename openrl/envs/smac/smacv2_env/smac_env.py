@@ -111,6 +111,9 @@ class SMACEnv(gym.Env):
             dones,
             infos,
         )
+        
+    def render(self):
+        return self.env.render()
 
     def close(self):
         self.env.close()
