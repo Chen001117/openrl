@@ -104,7 +104,6 @@ def evaluate_policy(
             deterministic=deterministic, 
             episode_starts=episode_starts
         )
-        episode_starts = np.zeros((env.parallel_env_num,), dtype=bool)
         observations, rewards, dones, infos = env.step(actions)
         rewards = np.squeeze(rewards, axis=-1)
         current_rewards += rewards

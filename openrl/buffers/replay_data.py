@@ -1071,7 +1071,7 @@ class ReplayData(object):
                 adv_targ = advantages[indices].reshape(-1, *advantages.shape[2:])
             yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
 
-    def recurrent_generator(self, advantages, num_mini_batch, data_chunk_length):
+    def origin_generator(self, advantages, num_mini_batch, data_chunk_length):
         episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
         batch_size = n_rollout_threads * episode_length * num_agents
         data_chunks = batch_size // data_chunk_length  # [C=r*T*M/L]
@@ -1268,3 +1268,54 @@ class ReplayData(object):
             adv_targ = _flatten(L, N, adv_targ)
 
             yield critic_obs_batch, policy_obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, action_masks_batch
+
+    def recurrent_generator(self, advantages, num_mini_batch, data_chunk_length):
+
+        critic_obs = self.critic_obs[:-1].copy()
+        policy_obs = self.policy_obs[:-1].copy()
+        
+        critic_obs_batch = np.transpose(critic_obs, [0,2,1,3])
+        policy_obs_batch = np.transpose(policy_obs, [0,2,1,3])
+        actions_batch = np.transpose(self.actions, [0,2,1,3])
+        value_preds_batch = np.transpose(self.value_preds[:-1], [0,2,1,3])
+        return_batch = np.transpose(self.returns[:-1], [0,2,1,3])
+        masks_batch = np.transpose(self.masks[:-1], [0,2,1,3])
+        active_masks_batch = np.transpose(self.active_masks[:-1], [0,2,1,3])
+        old_action_log_probs_batch = np.transpose(self.action_log_probs, [0,2,1,3])
+        adv_targ = np.transpose(advantages, [0,2,1,3])
+        if self.action_masks is not None:
+            action_masks_batch = np.transpose(self.action_masks[:-1], [0,2,1,3])
+
+        critic_obs_batch = critic_obs_batch.reshape([-1, critic_obs_batch.shape[-1]])
+        policy_obs_batch = policy_obs_batch.reshape([-1, policy_obs_batch.shape[-1]])
+        actions_batch = actions_batch.reshape([-1, actions_batch.shape[-1]])
+        value_preds_batch = value_preds_batch.reshape([-1, value_preds_batch.shape[-1]])
+        return_batch = return_batch.reshape([-1, return_batch.shape[-1]])
+        masks_batch = masks_batch.reshape([-1, masks_batch.shape[-1]])
+        active_masks_batch = active_masks_batch.reshape([-1, active_masks_batch.shape[-1]])
+        old_action_log_probs_batch = old_action_log_probs_batch.reshape([-1, old_action_log_probs_batch.shape[-1]])
+        adv_targ = adv_targ.reshape([-1, adv_targ.shape[-1]])
+        if self.action_masks is not None:
+            action_masks_batch = action_masks_batch.reshape([-1, action_masks_batch.shape[-1]])
+        else:
+            action_masks_batch = None
+        
+        rnn_states_batch = self.rnn_states[0]
+        rnn_states_critic_batch = self.rnn_states_critic[0]
+        rnn_states_batch = rnn_states_batch.reshape([-1,*self.rnn_states.shape[3:]])
+        rnn_states_critic_batch = rnn_states_critic_batch.reshape([-1,*self.rnn_states_critic.shape[3:]])
+        
+        yield (
+            critic_obs_batch, 
+            policy_obs_batch,
+            rnn_states_batch, 
+            rnn_states_critic_batch, 
+            actions_batch, 
+            value_preds_batch, 
+            return_batch, 
+            masks_batch, 
+            active_masks_batch, 
+            old_action_log_probs_batch, 
+            adv_targ, 
+            action_masks_batch,
+        )
