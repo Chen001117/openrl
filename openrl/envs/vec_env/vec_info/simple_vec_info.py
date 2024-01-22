@@ -28,6 +28,7 @@ class SimpleVecInfo(BaseVecInfo):
             info_dict["agent_{}/rollout_episode_reward".format(i)] = agent_reward
 
         info_dict["FPS"] = int(self.total_step / (time.time() - self.start_time))
+        info_dict["train/step"] = self.total_step
         info_dict["rollout_episode_reward"] = np.mean(ep_rewards)
         return info_dict
 
