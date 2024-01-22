@@ -25,7 +25,7 @@ def train():
     # create environment
     env_num = 8
     env = make(
-        "10gen_protoss",
+        "10gen_terran",
         env_num=env_num,
         asynchronous=True,
         cfg=cfg,
