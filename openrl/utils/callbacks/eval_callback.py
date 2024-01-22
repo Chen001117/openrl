@@ -244,7 +244,7 @@ class EvalCallback(EventCallback):
 
             if len(self._is_success_buffer) > 0:
                 success_rate = np.mean(self._is_success_buffer)
-                eval_info["Eval/success_rate"] = success_rate
+                eval_info["test/battle_won_mean"] = success_rate
                 if self.verbose >= 1:
                     print(f"Success rate: {100 * success_rate:.2f}%")
 
