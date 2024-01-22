@@ -26,7 +26,7 @@ from openrl.envs.smac.smacv2_env.wrapper import StarCraftCapabilityEnvWrapper
 class SMACEnv(gym.Env):
     env_name = "SMAC"
 
-    def __init__(self, cfg):
+    def __init__(self, is_eval, cfg):
         
 
         distribution_config = {
@@ -49,6 +49,7 @@ class SMACEnv(gym.Env):
         }
 
         self.env = StarCraftCapabilityEnvWrapper(
+            is_eval,
             capability_config=distribution_config,
             map_name=cfg.map_name,
             debug=False,
@@ -83,7 +84,9 @@ class SMACEnv(gym.Env):
 
     def reset(self, seed=None, **kwargs):
 
-        local_obs, global_state = self.env.reset()
+        self.env.reset()
+        local_obs = self.env.get_obs()
+        global_state = self.env.get_state()
         global_state = [global_state for _ in range(self.agent_num)]
         action_mask = self.env.get_avail_actions()
 
