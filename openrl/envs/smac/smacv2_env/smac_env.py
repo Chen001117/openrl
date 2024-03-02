@@ -28,10 +28,28 @@ class SMACEnv(gym.Env):
 
     def __init__(self, is_eval, cfg):
         
-
+        zerg_config = {
+            "n_units": 10,
+            "n_enemies": 10,
+            "team_gen": {
+                "dist_type": "weighted_teams",
+                "unit_types": ["zergling", "hydralisk", "baneling"],
+                "weights": [0.45, 0.45, 0.1],
+                "observe": True,
+                "exception_unit_types": ["baneling"],
+            },
+            
+            "start_positions": {
+                "dist_type": "surrounded_and_reflect",
+                "p": 0.5,
+                "map_x": 32,
+                "map_y": 32,
+            },
+        }
+        
         protoss_config = {
-            "n_units": 5,
-            "n_enemies": 5,
+            "n_units": 10,
+            "n_enemies": 10,
             "team_gen": {
                 "dist_type": "weighted_teams",
                 "unit_types": ["stalker", "zealot", "colossus"],
@@ -49,8 +67,8 @@ class SMACEnv(gym.Env):
         }
         
         terran_config = {
-            "n_units": 5,
-            "n_enemies": 5,
+            "n_units": 10,
+            "n_enemies": 10,
             "team_gen": {
                 "dist_type": "weighted_teams",
                 "unit_types": ["marine", "marauder", "medivac"],
@@ -67,7 +85,7 @@ class SMACEnv(gym.Env):
             },
         }
 
-        distribution_config = terran_config
+        distribution_config = zerg_config
 
         self.env = StarCraftCapabilityEnvWrapper(
             is_eval,

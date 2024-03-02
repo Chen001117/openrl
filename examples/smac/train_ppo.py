@@ -25,7 +25,7 @@ def train():
     # create environment
     env_num = 8
     env = make(
-        "10gen_terran",
+        "10gen_zerg",
         env_num=env_num,
         asynchronous=True,
         cfg=cfg,
@@ -51,7 +51,7 @@ def train():
 def evaluation(agent):
     env_num = 2
     env = make(
-        "10gen_protoss",
+        "10gen_zerg",
         env_num=env_num,
         make_custom_envs=make_smac_envs,
     )

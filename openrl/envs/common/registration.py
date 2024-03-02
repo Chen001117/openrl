@@ -149,7 +149,14 @@ def make(
                 render_mode=convert_render_mode,
                 **kwargs,
             )
-        elif id in ["10gen_protoss", "10gen_protoss-eval"]:
+        elif id in [
+            "10gen_protoss", 
+            "10gen_protoss-eval", 
+            "10gen_terran", 
+            "10gen_terran-eval",
+            "10gen_zerg", 
+            "10gen_zerg-eval"
+        ]:
             from openrl.envs.smac.smacv2_env import make_smac_envs
             env_fns = make_smac_envs(
                 id=id, env_num=env_num, render_mode=convert_render_mode, **kwargs

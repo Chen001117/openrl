@@ -26,7 +26,7 @@ vec_info_class:
 callbacks:
   - id: "EvalCallback"
     args: {
-        "eval_env": { "id": "10gen_protoss-eval", "env_num": 8}, # how many envs to set up for evaluation
+        "eval_env": { "id": "10gen_zerg-eval", "env_num": 8}, # how many envs to set up for evaluation
         "n_eval_episodes": 128, # how many episodes to run for each evaluation
         "eval_freq": 25000, # how often to run evaluation
         "log_path": "./results/eval_log_path", # where to save the evaluation results
