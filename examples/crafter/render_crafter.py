@@ -42,7 +42,7 @@ def render():
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("crafter_agent/")
+    agent.load("crafter_agent-100M/")
 
     # begin to test
     trajectory = []
@@ -60,6 +60,8 @@ def render():
         img = obs["policy"][0, 0]
         img = img.transpose((1, 2, 0))
         trajectory.append(img)
+        
+    print("step", step)
 
     # save the trajectory to gif
     import imageio

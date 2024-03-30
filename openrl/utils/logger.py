@@ -39,9 +39,10 @@ class Logger:
         log_path: Optional[str] = None,
         use_wandb: bool = False,
         use_tensorboard: bool = False,
-        log_level: int = logging.DEBUG,
+        log_level: int = logging.WARNING, # DEBUG TODO
         log_to_terminal: bool = True,
     ) -> None:
+        
         # TODO: change these flags to log_backend
         self.use_wandb = use_wandb
         self.use_tensorboard = use_tensorboard

@@ -26,19 +26,19 @@ from openrl.runners.common import PPOAgent as Agent
 
 
 def train():
-    # create environment
-    env = make("Crafter", env_num=32, asynchronous=True)
     # config
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
+    # create environment
+    env = make("Crafter", env_num=128, asynchronous=True, cfg=cfg)
     # create the neural network
     net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
     agent = Agent(net, use_wandb=True)
     # start training
-    agent.train(total_time_steps=100000000)
+    agent.train(total_time_steps=1000000)
     # save the trained model
-    agent.save("crafter_agent-100M/")
+    agent.save("crafter_agent/")
     # close the environment
     env.close()
     return agent

@@ -28,6 +28,10 @@ class RewardFactory:
             from openrl.rewards.nlp_reward import NLPReward
 
             registed_rewards.update({"NLPReward": NLPReward})
+        if reward_class.id == "CrafterReward":
+            from openrl.rewards.crafter_reward import CrafterReward
+
+            registed_rewards.update({"CrafterReward": CrafterReward})
         elif reward_class.id == "GAILReward":
             from openrl.rewards.gail_reward import GAILReward
 

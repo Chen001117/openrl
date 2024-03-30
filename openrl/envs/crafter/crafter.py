@@ -23,6 +23,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import Wrapper
 
+from openrl.envs.crafter.text_wrapper import TextWrapper
 
 class CrafterWrapper(Wrapper):
     def __init__(
@@ -42,6 +43,7 @@ class CrafterWrapper(Wrapper):
             save_episode=False,
             save_video=False,
         )
+        self.env = TextWrapper(self.env)
 
         super().__init__(self.env)
 
@@ -56,7 +58,6 @@ class CrafterWrapper(Wrapper):
     def step(self, action: int):
         obs, reward, done, truncated, info = self.env.step(action)
         obs = self.convert_observation(obs)
-
         return obs, reward, done, truncated, info
 
     def reset(
