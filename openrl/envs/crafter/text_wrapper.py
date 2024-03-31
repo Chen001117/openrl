@@ -66,7 +66,8 @@ class TextWrapper(BaseWrapper):
         # the first 4 items in the inventory are the player's status
         for k, v in self.env.player.inventory.items():
             if k in STATUS_ITEMS:
-                inner_state += f"{k}: {v}/{STATUS_MAX_VALUE}, "
+                inner_state += f"{k}: {v}/{STATUS_MAX_VALUE}"
+                inner_state += "." if k == "energy" else ", "
 
         inventory = "You have in your inventory: "
         empty_inventory = True
@@ -80,7 +81,7 @@ class TextWrapper(BaseWrapper):
             
         surrounding_state = self.env.text_view.local_sentence_view(self.env.player)
 
-        text_state = surrounding_state + "\n" + inventory + "\n" + inner_state
+        text_state = surrounding_state + " " + inventory + " " + inner_state
 
         return text_state  
         

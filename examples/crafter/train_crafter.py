@@ -38,7 +38,7 @@ def train():
     # start training
     agent.train(total_time_steps=1000000)
     # save the trained model
-    agent.save("crafter_agent/")
+    agent.save("crafter_agent-1M/")
     # close the environment
     env.close()
     return agent

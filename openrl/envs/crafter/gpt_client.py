@@ -1,4 +1,5 @@
 from openai import AsyncOpenAI
+from openai import OpenAI
 
 import asyncio
 
@@ -16,7 +17,6 @@ class GPTClient:
         self.cal_approx_cost = True
         self.num_prompt = 0
         self.num_output = 0
-        
 
     async def query(self, msg):
         """
@@ -28,7 +28,7 @@ class GPTClient:
             messages=msg,
             # max_tokens=100,
             stop=['.\n\n'],
-            # temperature=0.6,
+            temperature=0.6,
             # frequency_penalty=0
         )
         
@@ -38,7 +38,7 @@ class GPTClient:
             self.num_output += len(response.choices[0].message.content)
         
         return response
-
+    
     async def async_query(self, prompts):
         """
         prompts: list of prompt
@@ -61,11 +61,14 @@ if __name__ == "__main__":
     
     prompts = [
         [
-            {"role": "system", "content": "You are a helpful agent."},
+            {"role": "system", "content": "You are a helpful agent."*60},
             {"role": "user", "content": "Tell me a joke."},
-        ],
+            {"role": "assistant", "content": "Sure, here's a joke for you: Why did the scarecrow win an award? Because he was outstanding in his field! (get it?)"},
+            {"role": "user", "content": "Tell me another joke."},
+        ] for _ in range(100)
     ]
     
-    responses = asyncio.run(client.async_query(prompts))
+    for i in range(100):
+        responses = asyncio.run(client.async_query(prompts))
     
-    print("responses:", responses[0].choices[0].message.content)
+        print(i, "responses:", responses[0].choices[0].message.content)

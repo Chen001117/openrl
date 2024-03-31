@@ -29,7 +29,7 @@ class CrafterReward(BaseReward):
          
         for rew_func in self.step_rew_funcs.values():
             new_rew, _ = rew_func(data)
-            rewards = new_rew.reshape(rewards.shape)
+            rewards = new_rew.reshape(rewards.shape) + rewards * 0.01
         
         return rewards, []
 
