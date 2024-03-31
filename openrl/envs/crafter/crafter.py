@@ -52,6 +52,8 @@ class CrafterWrapper(Wrapper):
         )
 
         self.action_space = gym.spaces.Discrete(self.env.action_space.n)
+        
+        self._seed = 0
 
     def step(self, action: int):
         obs, reward, done, truncated, info = self.env.step(action)
@@ -65,6 +67,11 @@ class CrafterWrapper(Wrapper):
         options: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
+        if seed is not None:
+            self._seed = seed
+        else:
+            self._seed += 1
+            seed = self._seed
         obs, info = self.env.reset(seed, options)
         obs = self.convert_observation(obs)
 
