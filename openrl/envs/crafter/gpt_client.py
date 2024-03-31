@@ -28,7 +28,7 @@ class GPTClient:
             messages=msg,
             # max_tokens=100,
             stop=['.\n\n'],
-            temperature=0.6,
+            # temperature=0.8,
             # frequency_penalty=0
         )
         
@@ -49,7 +49,31 @@ class GPTClient:
     
     def approx_cost(self):
         return self.num_prompt * 0.06 / 1000 + self.num_output * 0.12 / 1000
-    
+  
+p1 = "\
+You are a helpful assistant that tells me the next immediate task to do in Crafter game. \
+Here are some tips: \
+You have to worry about food, drink, and energy levels when they are low. \
+Killing cows and eating plants will increase food level. Tree is not edible. \
+Drinking water will increase drink level. \
+Sleeping in a safe place (surrounded by blocks) will increase energy. \
+Health level will decrease when attacked by monsters. \
+Discovering new things when food, drink, and energy levels are high. \
+Chop Trees to collect Wood. \
+Use the wood to create a crafting table. \
+Crafting pickaxe and sword near the crafting table. \
+The pickaxe allows you to mine stone, while the sword is for attack. \
+My ultimate goal is to discover as many diverse things as possible, accomplish as many diverse tasks as possible and become the best Crafter player in the world. \
+Desired format: Reasoning: <reasoning>. Task: <task description>.\n\n\
+Here is an example:\nReasoning: Your food level is low. You need to eat to restore your food level, and the cow is the only food source available. Task: Kill the cow.\n\n\
+Reasoning: Your food level is low. You need to eat to restore your food level, and the cow is the only food source available. Task: Kill the cow.\n\n"
+p2 = "\
+Your health level is high, food level is high, drink level is high, energy is high. \
+You see tree. \
+You have in your inventory: wood, rock, plant. \
+What do you do?"
+
+  
     
 if __name__ == "__main__":
     
@@ -59,16 +83,14 @@ if __name__ == "__main__":
         model = "meta-llama/Llama-2-70b-chat-hf",
     )
     
+    
     prompts = [
         [
-            {"role": "system", "content": "You are a helpful agent."*60},
-            {"role": "user", "content": "Tell me a joke."},
-            {"role": "assistant", "content": "Sure, here's a joke for you: Why did the scarecrow win an award? Because he was outstanding in his field! (get it?)"},
-            {"role": "user", "content": "Tell me another joke."},
-        ] for _ in range(100)
+            {"role": "system", "content": p1},
+            {"role": "user", "content": p2},
+        ] 
     ]
     
-    for i in range(100):
-        responses = asyncio.run(client.async_query(prompts))
+    responses = asyncio.run(client.async_query(prompts))
     
-        print(i, "responses:", responses[0].choices[0].message.content)
+    print(responses[0].choices[0].message.content)

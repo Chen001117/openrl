@@ -13,24 +13,24 @@ import asyncio
 import time
 from random import sample
 
-TASK_SYSTEM_PROMPT1 = "\
+TASK_SYSTEM_PROMPT = "\
 You are a helpful assistant that tells me the next immediate task to do in Crafter game. \
-Here are some tips for playing Crafter. \
-Collect Wood: This is your first task. Find trees and collect wood by interacting with them. \
-Place Table: Use the wood you collected to create a crafting table. This will allow you to create more complex items. \
-Make Wooden Tools: Place a crafting table and make a wooden pickaxe and sword. The pickaxe allows you to mine stone, while the sword is for defense. \
-Collect Stone: Mine stone with your wooden pickaxe. You'll need this to create stronger tools. \
-Food Level: The player's food level gradually diminishes. Eating cows and plants will increase food level. You can not get meat by killing the cow. \
-Drink Level: The player’s water level depletes gradually. When the drink level is not full, drinking water will increase drink level. \
-Energy Level: The energy level will gradually decrease. When you are low on energy, sleeping in a safe place will increase energy. \
-My ultimate goal is to discover as many diverse things as possible, \
-accomplish as many diverse tasks as possible and become the best Crafter player in the world."
- 
-TASK_SYSTEM_PROMPT2 = "\
+Here are some tips: \
+You have to worry about food, drink, and energy levels when they are low. \
+Killing cows and eating plants will increase food level. Tree is not edible. \
+Drinking water will increase drink level. \
+Sleeping in a safe place (surrounded by blocks) will increase energy. \
+Health level will decrease when attacked by monsters. \
+Discovering new things, obtaining resources or crafting new tools when food, drink, and energy levels are high. \
+Chop Trees to collect Wood. \
+Use the wood to create a crafting table. \
+Crafting pickaxe and sword near the crafting table. \
+The pickaxe allows you to mine stone, while the sword is for attack. \
+My ultimate goal is to discover as many diverse things as possible, accomplish as many diverse tasks as possible and become the best Crafter player in the world. \
 The task description should start with: sleep, eat, kill, find, drink, place, craft, mine, chop.\n\
-Desired format: Reasoning: <reasoning>. Task: <task description>.\n\n\
-Here is an example:\n\
-Reasoning: You need to eat to restore your food level, and the cow is the only food source available. Task: Kill the cow.\n\n"
+Desired format: Reasoning: <reasoning>. Task: <task description>.\n\n"
+# Here is an example:\n\
+# Reasoning: You need to eat to restore your food level, and the cow is the only food source available. Task: Kill the cow.\n\n"
 
 
 # Collect Wood: This is your first task. Find trees and collect wood by interacting with them. \
@@ -86,10 +86,10 @@ Completion Criteria: The task's completion would be indicated by an increase in 
 COMPLETE_FEW_SHOT = "\
 The task at hand is to drink water from the nearby stream. \
 Initially, you see grass, and tree. You have nothing in your inventory. \
-Your inner properties: health: 9/9, food: 8/9, drink: 7/9, energy: 8/9. \
+Your health is high, food level is high, drink level is low, energy level is high. \
 Currently, You see grass, tree, and water. \
 You have nothing in your inventory. \
-Your inner properties: health: 9/9, food: 7/9, drink: 8/9, energy: 9/9. \
+Your health is high, food level is high, drink level is high, energy level is high. \
 Has the task been completed?"
             
 
@@ -111,8 +111,7 @@ class LLMsCoach(nn.Module):
         # model = "berkeley-nest/Starling-LM-7B-alpha"
         # self._small_client = GPTClient(api_key, api_base, model)
         
-        self._task_system1 = TASK_SYSTEM_PROMPT1
-        self._task_system2 = TASK_SYSTEM_PROMPT2
+        self._task_system = TASK_SYSTEM_PROMPT
         self._task_user_question = " What do you do?"
         
         self._complete_system = COMPLETION_SYSTEM_PROMPT
@@ -200,14 +199,14 @@ class LLMsCoach(nn.Module):
                 current_state = info["text_obs"]
                 user_content = current_state + self._task_user_question
                 if len(self._completed_tasks) > 0:
-                    learned_task = sample(self._completed_tasks, min(len(self._completed_tasks), self._num_few_shot))
-                    learned_task = " ".join(t for t in learned_task)
-                    learned_task_prefix = "Here are some tasks I have learned so far:"
-                    system_content = self._task_system1 + learned_task_prefix + learned_task +  self._task_system2
+                    # learned_task = sample(self._completed_tasks, min(len(self._completed_tasks), self._num_few_shot))
+                    # learned_task = " ".join(t for t in learned_task)
+                    # learned_task_prefix = "Here are some tasks I have learned so far:"
+                    system_content = self._task_system
                 else:
-                    system_content = self._task_system1 + self._task_system2
+                    system_content = self._task_system
                 prompt1 = {"role": "system", "content": system_content}
-                prompt2 = {"role": "user", "content": "You see tree. You have nothing in your inventory. Your inner properties: health: 9/9, food: 9/9, drink: 9/9, energy: 9/9. What do you do?"}
+                prompt2 = {"role": "user", "content": "You see tree. You have nothing in your inventory. Your health level is high, food level is high, drink level is high, energy is high. What do you do?"}
                 prompt3 = {"role": "assistant", "content": "Reasoning: The inventory is empty now, chop down a tree to get some wood. Task: Obtain a wood log.\n\n"}
                 prompt4 = {"role": "user", "content": user_content}
                 # print("task", user_content)

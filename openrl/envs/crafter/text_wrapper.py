@@ -59,22 +59,26 @@ class TextWrapper(BaseWrapper):
         """
         
         STATUS_ITEMS = ['health', 'food', 'drink', 'energy']
-        STATUS_MAX_VALUE = 9
         
-        inner_state = "Your inner properties: "
+        inner_state = "Your "
         
         # the first 4 items in the inventory are the player's status
         for k, v in self.env.player.inventory.items():
             if k in STATUS_ITEMS:
-                inner_state += f"{k}: {v}/{STATUS_MAX_VALUE}"
-                inner_state += "." if k == "energy" else ", "
+                status = "low" if v <= 3 else "high"
+                if k == "energy":
+                    inner_state += f"{k} is " + status
+                    inner_state += "." 
+                else:
+                    inner_state += f"{k} level is " + status
+                    inner_state += ", "
 
         inventory = "You have in your inventory: "
         empty_inventory = True
         for k, v in self.env.player.inventory.items():
             if k not in STATUS_ITEMS and v > 0:
                 k = "plant" if k == "sapling" else k
-                inventory += f"{v} {k}, "
+                inventory += f"{k}, "
                 empty_inventory = False
         if empty_inventory:
             inventory = "You have nothing in your inventory."
