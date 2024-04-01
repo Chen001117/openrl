@@ -27,9 +27,15 @@ class ObsData(TreeValue):
     @staticmethod
     def prepare_input(obs):
         if isinstance(obs, dict):
-            result = {}
+            result = dict()
             for str_key in obs.keys():
-                result[str_key] = np.concatenate(obs[str_key])
+                if isinstance(obs[str_key], dict):
+                    result2 = dict()
+                    for str_key2 in obs[str_key].keys():
+                        result2[str_key2] = np.concatenate(obs[str_key][str_key2])
+                    result[str_key] = result2
+                else:
+                    result[str_key] = np.concatenate(obs[str_key])
         else:
             result = np.concatenate(obs, axis=0)
         return result

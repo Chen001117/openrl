@@ -25,6 +25,7 @@ from openrl.envs.vec_env import (
     AsyncVectorEnv,
     BaseVecEnv,
     RewardWrapper,
+    TaskWrapper,
     SyncVectorEnv,
     VecMonitorWrapper,
 )
@@ -178,5 +179,7 @@ def make(
         vec_info_class = cfg.vec_info_class if cfg else None
         vec_info_class = VecInfoFactory.get_vec_info_class(vec_info_class, env)
         env = VecMonitorWrapper(vec_info_class, env)
+    
+    env = TaskWrapper(env)
 
     return env

@@ -201,15 +201,24 @@ class RLAgent(BaseAgent):
 
         assert path.exists(), f"{path} does not exist"
 
-        if not torch.cuda.is_available():
-            self.net.module = torch.load(path, map_location=torch.device("cpu"))
-            self.net.module.device = torch.device("cpu")
-            for key in self.net.module.models:
-                self.net.module.models[key].tpdv = dict(
-                    dtype=torch.float32, device=torch.device("cpu")
-                )
-        else:
-            self.net.module = torch.load(path)
+        # if not torch.cuda.is_available():
+        #     self.net.module = torch.load(path, map_location=torch.device("cpu"))
+        #     self.net.module.device = torch.device("cpu")
+        #     for key in self.net.module.models:
+        #         self.net.module.models[key].tpdv = dict(
+        #             dtype=torch.float32, device=torch.device("cpu")
+        #         )
+        # else:
+        #     self.net.module = torch.load(path)
+        # self.net.reset()
+        
+        module = torch.load(path)
+        self.net.module.models["critic"].base.cnn = module.models["critic"].base.cnn
+        self.net.module.models["critic"].rnn = module.models["critic"].rnn
+        self.net.module.models["critic"].v_out = module.models["critic"].v_out
+        self.net.module.models["policy"].base.cnn = module.models["policy"].base.cnn
+        self.net.module.models["policy"].rnn = module.models["policy"].rnn
+        self.net.module.models["policy"].act = module.models["policy"].act
         self.net.reset()
 
     def load_policy(self, path: Union[str, pathlib.Path, io.BufferedIOBase]) -> None:

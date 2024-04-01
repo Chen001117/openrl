@@ -117,9 +117,15 @@ class PolicyNetwork(BasePolicyNetwork):
                 self.v_out = init_(nn.Linear(input_size, 1))
         if use_half:
             self.half()
-        self.to(device)
+        
+        self.device = device
+        self.to(self.device)
+        self.first_time = True
 
     def forward(self, forward_type, *args, **kwargs):
+        if self.first_time:
+            self.to(self.device)
+            self.first_time = False
         if forward_type == "original":
             return self.forward_original(*args, **kwargs)
         elif forward_type == "eval_actions":
