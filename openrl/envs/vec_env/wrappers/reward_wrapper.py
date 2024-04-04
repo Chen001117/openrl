@@ -29,13 +29,11 @@ class RewardWrapper(VecEnvWrapper):
     def __init__(self, env: BaseVecEnv, reward_class: BaseReward):
         super().__init__(env)
         self.reward_class = reward_class
-        # if len(self.reward_class.inner_rew_funcs) > 0:
-        #     env.call("set_reward", **{"reward_fn": self.reward_class.inner_rew_funcs})
 
     def step(
-        self, action: ActType, extra_data: Optional[Dict[str, Any]]
+        self, action: ActType, extra_data: Optional[Dict[str, Any]], *args, **kwargs
     ) -> Union[Any, np.ndarray, np.ndarray, List[Dict[str, Any]]]:
-        obs, rewards, dones, infos = self.env.step(action)
+        obs, rewards, dones, infos = self.env.step(action, *args, **kwargs)
 
         if extra_data:
             extra_data.update({"actions": action})
@@ -47,12 +45,8 @@ class RewardWrapper(VecEnvWrapper):
 
             num_envs = len(infos)
             for i in range(num_envs):
-                if isinstance(infos[i], list):
-                    for j in range(len(infos[i])):
-                        infos[i][j].update(new_infos[i])
-                else:
-                    if len(new_infos) > 0:
-                        infos[i].update(new_infos[i])
+                if len(new_infos) > 0:
+                    infos[i] = {"task": new_infos[i]}
 
         return obs, rewards, dones, infos
 

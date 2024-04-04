@@ -185,6 +185,8 @@ class AsyncVectorEnv(BaseVecEnv):
 
         self._state = AsyncState.DEFAULT
         self._check_spaces()
+        
+        self.original_obs_space = None
 
     def _reset(
         self,
@@ -294,9 +296,18 @@ class AsyncVectorEnv(BaseVecEnv):
         for i, info in enumerate(info_data):
             infos.append(info)
 
+        if self.original_obs_space is None:
+            from gymnasium.spaces.dict import Dict as DictSpace
+            self.original_obs_space = DictSpace(
+                {
+                    "policy": self.observation_space["policy"]["image"],
+                    "critic": self.observation_space["critic"]["image"],
+                }
+            )
+
         if not self.shared_memory:
             self.observations = concatenate(
-                self.observation_space, results, self.observations
+                self.original_obs_space, results, self.observations
             )
 
         return (deepcopy(self.observations) if self.copy else self.observations), infos
@@ -404,7 +415,7 @@ class AsyncVectorEnv(BaseVecEnv):
 
         if not self.shared_memory:
             self.observations = concatenate(
-                self.observation_space,
+                self.original_obs_space,
                 observations_list,
                 self.observations,
             )

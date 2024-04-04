@@ -73,7 +73,23 @@ You see tree. \
 You have in your inventory: wood, rock, plant. \
 What do you do?"
 
-  
+
+p1 = "\
+You are a helpful assistant that tells me whether the given task has been completed." 
+# Desired format: Completion Criteria: <reasoning>. Answer: yes or no.\n\n\
+# Here is an example:\n\
+# Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst. Answer: no.\n\n\
+# Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst. Answer: no.\n\n"
+p2 = "\
+The task at hand is to eat the plant to increase your food level. \
+Initially, You see tree. You have in your inventory: plant,  Your health level is high, food level is high, drink level is high, energy is high. \
+Afterwards, you move, attack cow, and chop tree. \
+Currently, You see cow, lava, path, skeleton, stone, and tree. \
+You have in your inventory: stone, wood_pickaxe, wood_sword,  \
+Your health level is high, food level is high, drink level is high, energy is high. \
+Has the task been completed? \
+Desired format: Completion Criteria: <reasoning>; Answer: yes or no.\n\n"
+ 
     
 if __name__ == "__main__":
     

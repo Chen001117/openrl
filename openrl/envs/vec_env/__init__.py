@@ -7,6 +7,7 @@ from openrl.envs.vec_env.base_venv import BaseVecEnv
 from openrl.envs.vec_env.sync_venv import SyncVectorEnv
 from openrl.envs.vec_env.wrappers.base_wrapper import VecEnvWrapper
 from openrl.envs.vec_env.wrappers.reward_wrapper import RewardWrapper
+from openrl.envs.vec_env.wrappers.task_wrapper import TaskWrapper
 from openrl.envs.vec_env.wrappers.vec_monitor_wrapper import VecMonitorWrapper
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "AsyncVectorEnv",
     "VecMonitorWrapper",
     "RewardWrapper",
+    "TaskWrapper",
 ]
 
 

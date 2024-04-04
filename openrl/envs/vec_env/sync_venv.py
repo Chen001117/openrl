@@ -109,6 +109,9 @@ class SyncVectorEnv(BaseVecEnv):
             dtype=np.bool_,
         )
         self._actions = None
+        
+        # TODO: remove this
+        self.original_obs_space = None
 
     def seed(self, seed: Optional[Union[int, Sequence[int]]] = None):
         """Sets the seed in all sub-environments.
@@ -170,8 +173,16 @@ class SyncVectorEnv(BaseVecEnv):
             return self.format_obs(observations)
 
     def format_obs(self, observations: Iterable) -> Union[tuple, dict, np.ndarray]:
+        if self.original_obs_space is None:
+            from gymnasium.spaces.dict import Dict as DictSpace
+            self.original_obs_space = DictSpace(
+                {
+                    "policy": self.observation_space["policy"]["image"],
+                    "critic": self.observation_space["critic"]["image"],
+                }
+            )
         self.observations = concatenate(
-            self.observation_space, observations, self.observations
+            self.original_obs_space, observations, self.observations
         )
         return deepcopy(self.observations) if self.copy else self.observations
 

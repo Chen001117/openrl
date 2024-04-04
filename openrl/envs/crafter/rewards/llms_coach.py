@@ -103,7 +103,7 @@ class LLMsCoach(nn.Module):
     ):
         super().__init__()
         self.reset_freq = reset_freq
-        self.n_env = 128
+        self.n_env = 2
         
         self._client = GPTClient(api_key, api_base, model)
         # api_key = "EMPTY"
@@ -146,7 +146,7 @@ class LLMsCoach(nn.Module):
         rewards = np.zeros(self.n_env)
         if self._step_cnt > 0:
             self._step_cnt = (self._step_cnt + 1) % self.reset_freq
-            return rewards, []
+            return rewards, self._last_task
         
         # update task number of tries
         self._task_num_try = self._task_num_try + 1
@@ -245,4 +245,4 @@ class LLMsCoach(nn.Module):
         
         self._step_cnt = (self._step_cnt + 1) % self.reset_freq
         
-        return rewards, []
+        return rewards, self._last_task
