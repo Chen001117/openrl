@@ -45,8 +45,12 @@ class RewardWrapper(VecEnvWrapper):
 
             num_envs = len(infos)
             for i in range(num_envs):
-                if len(new_infos) > 0:
-                    infos[i] = {"task": new_infos[i]}
+                if isinstance(infos[i], list):
+                    for j in range(len(infos[i])):
+                        infos[i][j].update(new_infos[i])
+                else:
+                    if len(new_infos) > 0:
+                        infos[i].update(new_infos[i])
 
         return obs, rewards, dones, infos
 

@@ -26,6 +26,10 @@ class VecInfoFactory:
     def auto_register(vec_info_class: Any):
         if vec_info_class is None:
             return
+        elif vec_info_class.id == "CrafterVecInfo":
+            from openrl.envs.vec_env.vec_info.crafter_vec_info import CrafterVecInfo
+
+            VecInfoFactory.register("CrafterVecInfo", CrafterVecInfo)
         elif vec_info_class.id == "NLPVecInfo":
             from openrl.envs.vec_env.vec_info.nlp_vec_info import NLPVecInfo
 

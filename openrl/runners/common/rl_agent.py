@@ -213,11 +213,11 @@ class RLAgent(BaseAgent):
         # self.net.reset()
 
         module = torch.load(path)
-        self.net.module.models["critic"].base.cnn = module.models["critic"].base.cnn
+        self.net.module.models["critic"].base = module.models["critic"].base
         self.net.module.models["critic"].rnn = module.models["critic"].rnn
         self.net.module.models["critic"].v_out = module.models["critic"].v_out
         # self.net.module.models["critic"].out_layer = module.models["critic"].base.out_layer
-        self.net.module.models["policy"].base.cnn = module.models["policy"].base.cnn
+        self.net.module.models["policy"].base = module.models["policy"].base
         self.net.module.models["policy"].rnn = module.models["policy"].rnn
         self.net.module.models["policy"].act = module.models["policy"].act
         # self.net.module.models["policy"].out_layer = module.models["policy"].base.out_layer

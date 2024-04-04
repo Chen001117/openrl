@@ -30,12 +30,12 @@ def train():
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
     # create environment
-    env = make("Crafter", env_num=2, asynchronous=False, cfg=cfg)
+    env = make("Crafter", env_num=2, asynchronous=True, cfg=cfg)
     # create the neural network
     net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
     agent = Agent(net, use_wandb=False)
-    agent.load("crafter_agent-50M/")
+    agent.load("crafter_agent-20M-2/")
     # start training
     agent.train(total_time_steps=100000)
     # save the trained model

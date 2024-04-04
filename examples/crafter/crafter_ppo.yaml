@@ -1,6 +1,6 @@
 seed: 0
-lr: 2e-4
-critic_lr: 2e-4
+lr: 1e-2
+critic_lr: 1e-2
 episode_length: 128
 ppo_epoch: 4
 num_mini_batch: 4
@@ -22,3 +22,5 @@ reward_class:
     "model": "meta-llama/Llama-2-70b-chat-hf", #"berkeley-nest/Starling-LM-7B-alpha" #"gpt-4-32k",
     "base_model": "/zfsauton2/home/wentsec/openrl/examples/crafter/crafter_agent-50M"
   }
+vec_info_class:
+  id: "CrafterVecInfo"

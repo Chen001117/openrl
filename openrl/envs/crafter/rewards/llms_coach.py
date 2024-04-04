@@ -146,7 +146,8 @@ class LLMsCoach(nn.Module):
         rewards = np.zeros(self.n_env)
         if self._step_cnt > 0:
             self._step_cnt = (self._step_cnt + 1) % self.reset_freq
-            return rewards, self._last_task
+            infos = [{"task": task} for task in self._last_task]
+            return rewards, infos
         
         # update task number of tries
         self._task_num_try = self._task_num_try + 1
@@ -245,4 +246,6 @@ class LLMsCoach(nn.Module):
         
         self._step_cnt = (self._step_cnt + 1) % self.reset_freq
         
-        return rewards, self._last_task
+        infos = [{"task": task} for task in self._last_task]
+        
+        return rewards, infos
