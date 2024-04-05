@@ -33,6 +33,9 @@ class TextWrapper(BaseWrapper):
         self.cfg = cfg
         self.reward_class = reward_class
         
+        self.period = 32
+        self.period_small = 4
+        
     def reset(
         self,
         seed: Optional[int] = None,
@@ -42,15 +45,54 @@ class TextWrapper(BaseWrapper):
         self.env_step = 0
         obs, info = self.env.reset(seed, options)
         text_obs = self._get_text_obs()
+        self.text_obj = self.get_obj_dict()
         info.update({"text_obs": text_obs, "step": self.env_step})
+        self.obj_hist = [self.get_obj_dict() for _ in range(self.period)]
         return obs, info
         
     def step(self, action: ActType) -> Tuple[ObsType, SupportsFloat, bool, Dict[str, Any]]:
         self.env_step += 1
         obs, reward, done, truncated, _ = self.env.step(action)
+        self.obj_hist.append(self.get_obj_dict())
+        last_obs = self.obj_hist.pop(0)
+        obj_diff = ""
+        for i in range(0, self.period-1, self.period_small):
+            idx = min(self.period-1, i+4)
+            obj_diff += self.get_obj_diff(self.obj_hist[i], self.obj_hist[idx])
         text_obs = self._get_text_obs()
-        info = {"text_obs": text_obs, "step": self.env_step}
+        info = {"text_obs": text_obs, "step": self.env_step, "obj_diff": obj_diff}
         return obs, reward, done, truncated, info
+    
+    def get_obj_dict(self):
+        
+        obj_dict = dict()
+        
+        for k, v in self.env.player.inventory.items():
+            k = "plant" if k == "sapling" else k
+            obj_dict["inv-" + k] = v
+        
+        env_obj = self.env.text_view.local_obj(self.env.player)
+        for k, v in env_obj.items():
+            obj_dict["env-" + k] = v
+        
+        return obj_dict
+    
+    def get_obj_diff(self, last_obj, cur_obj):
+        output_string = ""
+        STATUS_ITEMS = ['inv-health', 'inv-food', 'inv-drink', 'inv-energy']
+        for k, v in last_obj.items():
+            if k in cur_obj:
+                diff = cur_obj[k] - v
+                if k in STATUS_ITEMS and diff < -1:
+                    output_string += ("loss " + str(-diff) + " " + k[4:] + ". ")
+                elif k in STATUS_ITEMS and diff > 0:
+                    output_string += ("gain " + str(diff) + " " + k[4:] + ". ")
+                elif "inv" in k and k not in STATUS_ITEMS and diff > 0:
+                    output_string += ("get " + str(diff) + " " + k[4:] + ". ")
+                elif "inv" in k and k not in STATUS_ITEMS and diff < 0:
+                    output_string += ("use " + str(-diff) + " " + k[4:] + ". ")
+                    
+        return output_string
         
     def _get_text_obs(self):
         """
@@ -78,7 +120,7 @@ class TextWrapper(BaseWrapper):
         for k, v in self.env.player.inventory.items():
             if k not in STATUS_ITEMS and v > 0:
                 k = "plant" if k == "sapling" else k
-                inventory += f"{k}, "
+                inventory += f"{v} {k}, "
                 empty_inventory = False
         if empty_inventory:
             inventory = "You have nothing in your inventory."
@@ -86,6 +128,9 @@ class TextWrapper(BaseWrapper):
         surrounding_state = self.env.text_view.local_sentence_view(self.env.player)
 
         text_state = surrounding_state + " " + inventory + " " + inner_state
+        
+        if self.env.player.sleeping:
+            text_state += " You are sleeping."
 
         return text_state  
         

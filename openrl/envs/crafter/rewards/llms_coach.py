@@ -28,7 +28,7 @@ Crafting pickaxe and sword near the crafting table. \
 The pickaxe allows you to mine stone, while the sword is for attack. \
 My ultimate goal is to discover as many diverse things as possible, accomplish as many diverse tasks as possible and become the best Crafter player in the world. \
 The task description should start with: sleep, eat, kill, find, drink, place, craft, mine, chop.\n\
-Desired format: Reasoning: <reasoning>. Task: <task description>.\n\n"
+Desired format: Reasoning: <reasoning>; Task: <task description>.\n\n"
 # Here is an example:\n\
 # Reasoning: You need to eat to restore your food level, and the cow is the only food source available. Task: Kill the cow.\n\n"
 
@@ -80,7 +80,7 @@ COMPLETION_SYSTEM_PROMPT = "\
 You are a helpful assistant that tells me whether the given task in Crafter game has been completed. \
 Desired format: Completion Criteria: <reasoning>. Answer: yes or no.\n\n\
 Here is an example:\n\
-Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst. Answer: no.\n\n"
+Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: no.\n\n"
 # Just answer yes or no."
 
 COMPLETE_FEW_SHOT = "\
@@ -103,7 +103,7 @@ class LLMsCoach(nn.Module):
     ):
         super().__init__()
         self.reset_freq = reset_freq
-        self.n_env = 2
+        self.n_env = 128
         
         self._client = GPTClient(api_key, api_base, model)
         # api_key = "EMPTY"
@@ -160,12 +160,13 @@ class LLMsCoach(nn.Module):
                 
                 task2do = "The task at hand is to" + self._last_task[idx].lower() + ". "
                 last_state = "Initially, " + self._last_state[idx] + " "
+                mid = "During the period, you " + info["obj_diff"]
                 text_state = "Currently, " + info["text_obs"] + " "
-                question = task2do + last_state + text_state + self._complete_question
+                question = task2do + last_state + mid + text_state + self._complete_question
                 
                 prompt1 = {"role": "system", "content": self._complete_system}
                 prompt2 = {"role": "user", "content": COMPLETE_FEW_SHOT}
-                prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst. Answer: yes.\n\n"}     
+                prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: yes.\n\n"}     
                 prompt4 = {"role": "user", "content": question}
                 prompts.append([prompt1, prompt2, prompt3, prompt4])
                 new_task_idx.append(idx)
@@ -208,7 +209,7 @@ class LLMsCoach(nn.Module):
                     system_content = self._task_system
                 prompt1 = {"role": "system", "content": system_content}
                 prompt2 = {"role": "user", "content": "You see tree. You have nothing in your inventory. Your health level is high, food level is high, drink level is high, energy is high. What do you do?"}
-                prompt3 = {"role": "assistant", "content": "Reasoning: The inventory is empty now, chop down a tree to get some wood. Task: Obtain a wood log.\n\n"}
+                prompt3 = {"role": "assistant", "content": "Reasoning: The inventory is empty now, chop down a tree to get some wood; Task: Obtain a wood log.\n\n"}
                 prompt4 = {"role": "user", "content": user_content}
                 # print("task", user_content)
                 prompts.append([prompt1, prompt2, prompt3, prompt4])

@@ -46,12 +46,12 @@ def render():
 
     # begin to test
     trajectory = []
-    obs, info = env.reset(given_task=["Survive."])
+    obs, info = env.reset(given_task=["craft a pickaxe."])
     step = 0
     while True:
         # Based on environmental observation input, predict next action.
         action, _ = agent.act(obs, deterministic=False)
-        obs, r, done, info = env.step(action, given_task=["Survive."])
+        obs, r, done, info = env.step(action, given_task=["craft a pickaxe."])
         step += 1
 
         if all(done):

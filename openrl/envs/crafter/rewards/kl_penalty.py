@@ -66,7 +66,7 @@ class KLPenalty(nn.Module):
             self._ref_net.models[key] = self._ref_net.models[key].eval()
         
         self._alpha = 0.2
-        self._target_kl = 0.1
+        self._target_kl = 0.05
         self._update_rate = 0.1
         self._clip_coef = 0.2
         self._kl_length = 64
@@ -106,8 +106,8 @@ class KLPenalty(nn.Module):
         ref_log_prob = ref_log_prob.reshape(action_log_probs.shape)
 
         kl_div = action_log_probs.copy() - ref_log_prob.detach().cpu().numpy()
-        print("action log probs", action_log_probs.flatten()[:5])
-        print("ref log probs", ref_log_prob.flatten()[:5])
+        # print("action log probs", action_log_probs.flatten()[:5])
+        # print("ref log probs", ref_log_prob.flatten()[:5])
         rew = -self._alpha * kl_div
         infos = []
         for kl in kl_div:
@@ -123,7 +123,7 @@ class KLPenalty(nn.Module):
             self.update_alpha(np.mean(self._kl_data))
             self._kl_data = []
             
-        print("KL", kl_div.mean(), "Alpha", self._alpha)
+        # print("KL", kl_div.mean(), "Alpha", self._alpha)
             
         return rew, infos
 

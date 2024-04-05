@@ -21,7 +21,7 @@ class CrafterReward(BaseReward):
         self.inner_rew_funcs = dict()
         self.batch_rew_funcs = dict()
         self.step_rew_funcs = {
-            "lm_rewards": LLMsCoach(api_key, api_base, model, reset_freq=32),
+            "lm_rewards": LLMsCoach(api_key, api_base, model, reset_freq=16),
             "kl_pen": KLPenalty(env, cfg, base_model),
         }
 
