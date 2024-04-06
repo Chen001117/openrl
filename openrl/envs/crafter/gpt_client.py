@@ -28,7 +28,7 @@ class GPTClient:
             messages=msg,
             # max_tokens=100,
             stop=['.\n\n'],
-            # temperature=0.8,
+            temperature=1.,
             # frequency_penalty=0
         )
         

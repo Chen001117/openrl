@@ -53,7 +53,7 @@ def save_img(obs, task, idx=0):
     img = img.resize((256, 256))
     draw = ImageDraw.Draw(img)
     draw.text((10,10), task, fill=(255,0,0))
-    img.save("run_results/image{:03d}.png".format(idx))
+    img.save("run_results/image.png")
     return img
 
 
@@ -74,7 +74,7 @@ def render():
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("crafter_agent-2M/")
+    agent.load("crafter_agent-500k/")
 
     # begin to test
     trajectory = []
@@ -104,33 +104,37 @@ def render():
         obs, r, done, info = env.step(action, given_task=[current_task])
         step += 1
         
-        query = (query + 1) % 32
-        if query == 0:
+        # query = (query + 1) % 16
+        # if query == 0:
         
-            task2do = "The task at hand is to " + current_task + ". "
-            last_state = "Initially, " + last_obs + " "
-            text_state = "Currently, " + info[0]["text_obs"] + " "
-            mid = "During the period, you " + info[0]["obj_diff"]
-            question = task2do + last_state + mid + text_state + "Has the task been completed?"
+        #     task2do = "The task at hand is to " + current_task + ". "
+        #     last_state = "Initially, " + last_obs + " "
+        #     text_state = "Currently, " + info[0]["text_obs"] + " "
+        #     mid = "During the period, you " + info[0]["obj_diff"]
+        #     question = task2do + last_state + mid + text_state + "Has the task been completed?"
                     
-            prompt1 = {"role": "system", "content": COMPLETION_SYSTEM_PROMPT}
-            prompt2 = {"role": "user", "content": COMPLETE_FEW_SHOT}
+        #     prompt1 = {"role": "system", "content": COMPLETION_SYSTEM_PROMPT}
+        #     prompt2 = {"role": "user", "content": COMPLETE_FEW_SHOT}
             
-            prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: yes.\n\n"}     
-            prompt4 = {"role": "user", "content": question}
-            prompts = [[prompt1, prompt2, prompt3, prompt4]]
+        #     prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: yes.\n\n"}     
+        #     prompt4 = {"role": "user", "content": question}
+        #     prompts = [[prompt1, prompt2, prompt3, prompt4]]
             
-            responses = asyncio.run(client.async_query(prompts))
-            responses = responses[0].choices[0].message.content
+        #     responses = asyncio.run(client.async_query(prompts))
+        #     responses = responses[0].choices[0].message.content
             
-            print("Response: ", question + responses)
+        #     print("Response: ", question + responses)
             
-            print("Enter the task:", end="")
-            current_task = input()
-            last_state = info[0]["text_obs"]
+        img = save_img(obs, current_task, step)
+        trajectory.append(img)
+        
+        print("Enter the task:", end="")
+        input_text = input()
+        current_task = input_text if input_text != "" else current_task
+        if current_task == "exit":
+            break
+        last_state = info[0]["text_obs"]
                 
-            img = save_img(obs, current_task, step)
-            trajectory.append(img)
 
         if all(done):
             break

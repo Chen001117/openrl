@@ -14,24 +14,32 @@ import time
 from random import sample
 
 TASK_SYSTEM_PROMPT = "\
-You are a helpful assistant that tells me the next immediate task to do in Crafter game. \
+You are a helpful assistant that tells me the next immediate task to do. \
 Here are some tips: \
-You have to worry about food, drink, and energy levels when they are low. \
-Killing cows and eating plants will increase food level. Tree is not edible. \
-Drinking water will increase drink level. \
-Sleeping in a safe place (surrounded by blocks) will increase energy. \
-Health level will decrease when attacked by monsters. \
-Discovering new things, obtaining resources or crafting new tools when food, drink, and energy levels are high. \
-Chop Trees to collect Wood. \
-Use the wood to create a crafting table. \
-Crafting pickaxe and sword near the crafting table. \
-The pickaxe allows you to mine stone, while the sword is for attack. \
-My ultimate goal is to discover as many diverse things as possible, accomplish as many diverse tasks as possible and become the best Crafter player in the world. \
-The task description should start with: sleep, eat, kill, find, drink, place, craft, mine, chop.\n\
+You must monitor food, drink, and energy levels, addressing them when they are low. \
+Killing cows and eating plants will increase food level. Grass and tree are not edible. \
+Drinking water will replenish drink level. \
+Sleeping will restore energy. \
+Your health level will decrease when attacked by zombies or skeletons. \
+Kill zombies and skeletons upon sight. \
+When food, drink, and energy levels are high, discover new things, obtain resources, and kill enemies. \
+Find water source when water is not visible and the your drink level is low. \
+Chop Trees to collect Wood. Note that wood and plants are different things. \
+You need 2 wood to place a crafting table and need 4 stones to place a furnace. \
+The pickaxe is for mining, while the sword is for attack. \
+You need wood to craft wood pickaxe or sword near the crafting table. \
+You need stone to craft stone pickaxe or sword near the crafting table. \
+You need iron and coal to craft iron pickaxe or sword near the furnace. \
+A wood pickaxe is required to collect stone and coal. \
+A stone pickaxe is required to collect iron. \
+An iron pickaxe is required to collect diamond. \
+My ultimate goal is to discover as many diverse things as possible, \
+accomplish as many diverse tasks as possible and become the best player in the world. \
+The task description should start with: sleep, eat, kill, find, craft, drink, place, mine, chop. \
+Give one suggestion at one time. \
+Minimize choosing craft as an action. \
 Desired format: Reasoning: <reasoning>; Task: <task description>.\n\n"
-# Here is an example:\n\
-# Reasoning: You need to eat to restore your food level, and the cow is the only food source available. Task: Kill the cow.\n\n"
-
+# , be specific. \
 
 # Collect Wood: This is your first task. Find trees and collect wood by interacting with them. \
 # Place Table: Use the wood you collected to create a crafting table. This will allow you to create more complex items. \
@@ -52,33 +60,10 @@ Desired format: Reasoning: <reasoning>; Task: <task description>.\n\n"
 # Death: If the player’s health points reach zero, the player dies and the game is over. \
 # Health Regeneration: Health points regenerate over time as long as the player is not affected by hunger, thirst, or sleep deprivation. \
 # Grass is not edible. \
-
-# TASK_SYSTEM_PROMPT = "\
-# You are a helpful assistant that tells me the next immediate task to do in Crafter game. \
-# My ultimate goal is to discover as many diverse things as possible, \
-# accomplish as many diverse tasks as possible and become the best Crafter player in the world. \
-# The challenge in Crafter is to survive and unlock achievements by making strategic decisions based on the game's mechanics, which include managing health, food, water, and rest levels. Here are some foundational strategies:\n\
-# 1 Forage for food and water immediately. Lakes and cows are primary sources.\n\
-# 2 Build shelter by collecting wood and other materials to defend against monsters, especially at night.\n\
-# 3 Explore to find different biomes (forests, mountains, caves) that contain unique resources.\n\
-# 4 Collect resources like wood, stone, and eventually iron and diamonds, which are critical for crafting tools.\n\
-# 5 Start crafting with basic tools (e.g., wood pickaxe) to enable the collection of more advanced materials.\n\
-# 6 Progress through the technology tree by crafting advanced tools and objects, like furnaces, for accessing higher-tier resources.\n\
-# 7 Build weapons and learn to defend against creatures. Zombies appear at night, and skeletons reside in caves.\n\
-# 8 Keep an eye on your health, food, water, and rest levels. Neglecting these can lead to death.\n\
-# 9 Plan for the long term by planting saplings for wood and building structures for protection and resource processing.\n\
-# Desired format: Reasoning: <reasoning>. Task: <task description>.\n\n"
-
-# TASK_FEW_SHOT = "\
-# Here are some example responses:\n\
-# Example 1:\n\
-# Reasoning: The inventory is empty now, chop down a tree to get some wood. Task: Obtain a wood log.\n\n \n\
-# Example 2:\n\
-# Reasoning: With an low food level and a nearby cow, it's important to collect food first to avoid hunger depletion. Task: Kill a cow and get some meat.\n\n"
     
 COMPLETION_SYSTEM_PROMPT = "\
 You are a helpful assistant that tells me whether the given task in Crafter game has been completed. \
-Desired format: Completion Criteria: <reasoning>. Answer: yes or no.\n\n\
+Desired format: Completion Criteria: <reasoning>; Answer: yes or no.\n\n\
 Here is an example:\n\
 Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: no.\n\n"
 # Just answer yes or no."
@@ -124,11 +109,6 @@ class LLMsCoach(nn.Module):
         self.system_prompt = self.few_shot = ""
 
         self._step_cnt = 0
-        
-        self._completed_tasks = []
-        self._num_few_shot = 5
-        self._max_learned_tasks = 100
-
     def __call__(
         self, data: Dict[str, Any], past_model_kwargs: Optional[Any] = None
     ) -> Union[np.ndarray, List[Dict[str, Any]]]:
@@ -165,10 +145,10 @@ class LLMsCoach(nn.Module):
                 question = task2do + last_state + mid + text_state + self._complete_question
                 
                 prompt1 = {"role": "system", "content": self._complete_system}
-                prompt2 = {"role": "user", "content": COMPLETE_FEW_SHOT}
-                prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: yes.\n\n"}     
+                # prompt2 = {"role": "user", "content": COMPLETE_FEW_SHOT}
+                # prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: yes.\n\n"}     
                 prompt4 = {"role": "user", "content": question}
-                prompts.append([prompt1, prompt2, prompt3, prompt4])
+                prompts.append([prompt1, prompt4])
                 new_task_idx.append(idx)
         
         # query LLMs
@@ -200,18 +180,12 @@ class LLMsCoach(nn.Module):
             if task_completion[idx]:
                 current_state = info["text_obs"]
                 user_content = current_state + self._task_user_question
-                if len(self._completed_tasks) > 0:
-                    # learned_task = sample(self._completed_tasks, min(len(self._completed_tasks), self._num_few_shot))
-                    # learned_task = " ".join(t for t in learned_task)
-                    # learned_task_prefix = "Here are some tasks I have learned so far:"
-                    system_content = self._task_system
-                else:
-                    system_content = self._task_system
+                system_content = self._task_system
                 prompt1 = {"role": "system", "content": system_content}
                 prompt2 = {"role": "user", "content": "You see tree. You have nothing in your inventory. Your health level is high, food level is high, drink level is high, energy is high. What do you do?"}
                 prompt3 = {"role": "assistant", "content": "Reasoning: The inventory is empty now, chop down a tree to get some wood; Task: Obtain a wood log.\n\n"}
                 prompt4 = {"role": "user", "content": user_content}
-                # print("task", user_content)
+                # print("state: ", user_content)
                 prompts.append([prompt1, prompt2, prompt3, prompt4])
                 new_task_idx.append(idx)
         
@@ -233,9 +207,6 @@ class LLMsCoach(nn.Module):
             if "survive" not in self._last_task[true_idx].lower():
                 if self._task_num_try[true_idx] <= 3:
                     print("complete task:", self._last_task[true_idx])
-                    self._completed_tasks.append(self._last_task[true_idx])
-                    if len(self._completed_tasks) > self._max_learned_tasks:
-                        self._completed_tasks.pop(0)
             self._last_task[true_idx] = task_response
             self._task_num_try[true_idx] = 0
                 

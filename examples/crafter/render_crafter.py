@@ -42,16 +42,16 @@ def render():
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("crafter_agent-2M/")
+    agent.load("crafter_agent-500k/")
 
     # begin to test
     trajectory = []
-    obs, info = env.reset(given_task=["craft a pickaxe."])
+    obs, info = env.reset(given_task=["Survive"])
     step = 0
     while True:
         # Based on environmental observation input, predict next action.
-        action, _ = agent.act(obs, deterministic=False)
-        obs, r, done, info = env.step(action, given_task=["craft a pickaxe."])
+        action, _ = agent.act(obs, deterministic=True)
+        obs, r, done, info = env.step(action, given_task=["Survive"])
         step += 1
 
         if all(done):

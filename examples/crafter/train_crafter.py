@@ -37,9 +37,10 @@ def train():
     agent = Agent(net, use_wandb=True)
     agent.load("crafter_agent-20M-2/")
     # start training
-    agent.train(total_time_steps=500000)
+    agent.train(total_time_steps=2000000)
     # save the trained model
-    agent.save("crafter_agent-500k/")
+    agent.save("crafter_agent-2M/")
+    print("save model to crafter_agent-2M/")
     # close the environment
     env.close()
     return agent

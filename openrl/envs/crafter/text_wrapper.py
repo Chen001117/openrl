@@ -33,8 +33,8 @@ class TextWrapper(BaseWrapper):
         self.cfg = cfg
         self.reward_class = reward_class
         
-        self.period = 32
-        self.period_small = 4
+        self.reset_freq = 16
+        self.period_small = 2
         
     def reset(
         self,
@@ -47,7 +47,7 @@ class TextWrapper(BaseWrapper):
         text_obs = self._get_text_obs()
         self.text_obj = self.get_obj_dict()
         info.update({"text_obs": text_obs, "step": self.env_step})
-        self.obj_hist = [self.get_obj_dict() for _ in range(self.period)]
+        self.obj_hist = [self.get_obj_dict() for _ in range(self.reset_freq)]
         return obs, info
         
     def step(self, action: ActType) -> Tuple[ObsType, SupportsFloat, bool, Dict[str, Any]]:
@@ -56,8 +56,8 @@ class TextWrapper(BaseWrapper):
         self.obj_hist.append(self.get_obj_dict())
         last_obs = self.obj_hist.pop(0)
         obj_diff = ""
-        for i in range(0, self.period-1, self.period_small):
-            idx = min(self.period-1, i+4)
+        for i in range(0, self.reset_freq-1, self.period_small):
+            idx = min(self.reset_freq-1, i+4)
             obj_diff += self.get_obj_diff(self.obj_hist[i], self.obj_hist[idx])
         text_obs = self._get_text_obs()
         info = {"text_obs": text_obs, "step": self.env_step, "obj_diff": obj_diff}
