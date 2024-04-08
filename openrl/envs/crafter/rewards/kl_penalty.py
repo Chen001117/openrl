@@ -47,7 +47,7 @@ class KLPenalty(nn.Module):
             device=self.device,
         )
         
-        path = "crafter_agent-20M-2/"
+        path = "crafter_agent-100M-3/"
         print("KL penalty load model from ", path)
         if isinstance(path, str):
             path = pathlib.Path(path)
@@ -108,7 +108,7 @@ class KLPenalty(nn.Module):
         kl_div = action_log_probs.copy() - ref_log_prob.detach().cpu().numpy()
         # print("action log probs", action_log_probs.flatten()[:5])
         # print("ref log probs", ref_log_prob.flatten()[:5])
-        rew = -self._alpha * kl_div
+        rew = -self._alpha * kl_div 
         infos = []
         for kl in kl_div:
             infos.append(

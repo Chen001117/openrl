@@ -42,34 +42,32 @@ def render():
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("crafter_agent-2M-5/")
+    agent.load("crafter_agent-100M-3/")
 
-    # begin to test
-    trajectory = []
-    obs, info = env.reset(given_task=["Chop tree."])
-    step = 0
-    while True:
-        # Based on environmental observation input, predict next action.
-        action, _ = agent.act(obs, deterministic=True)
-        tasks = ["Chop tree.", "Mine stone.", "Kill the cow."]
-        t = np.random.randint(0, 3)
-        t = tasks[t]
-        obs, r, done, info = env.step(action, given_task=["Chop tree."])
-        step += 1
+    total_step = []
 
-        if all(done):
-            break
+    for i in range(100):
+        step = 0
+        obs, info = env.reset(given_task=["Chop tree."])
+        while True:
+            # Based on environmental observation input, predict next action.
+            action, _ = agent.act(obs, deterministic=True)
+            tasks = ["Chop tree.", "Mine stone.", "Kill the cow."]
+            t = np.random.randint(0, 3)
+            t = tasks[t]
+            obs, r, done, info = env.step(action, given_task=[t])
+            step += 1
 
-        img = obs["policy"]["image"][0, 0]
-        img = img.transpose((1, 2, 0))
-        trajectory.append(img)
+            if all(done):
+                break
         
-    print("step", step)
+        total_step.append(step)
+        
+        
+        print(i, "Average steps: ", np.mean(total_step))
+        
+        
 
-    # save the trajectory to gif
-    import imageio
-
-    imageio.mimsave("run_results/crafter.gif", trajectory, duration=0.01)
 
     env.close()
 

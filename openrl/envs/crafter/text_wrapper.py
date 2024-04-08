@@ -22,6 +22,8 @@ from gymnasium.core import ActType, ObsType, WrapperObsType
 
 from openrl.envs.wrappers.base_wrapper import BaseWrapper
 
+import numpy as np
+
 ArrayType = TypeVar("ArrayType")
 
 class TextWrapper(BaseWrapper):
@@ -33,8 +35,7 @@ class TextWrapper(BaseWrapper):
         self.cfg = cfg
         self.reward_class = reward_class
         
-        self.reset_freq = 16
-        self.period_small = 2
+        self.update_task_freq = 4
         
     def reset(
         self,
@@ -45,9 +46,13 @@ class TextWrapper(BaseWrapper):
         self.env_step = 0
         obs, info = self.env.reset(seed, options)
         text_obs = self._get_text_obs()
-        self.text_obj = self.get_obj_dict()
-        info.update({"text_obs": text_obs, "step": self.env_step})
-        self.obj_hist = [self.get_obj_dict() for _ in range(self.reset_freq)]
+        next_task = self.get_next_task(text_obs)
+        info.update({
+            "text_obs": text_obs, 
+            "step": self.env_step,
+            "next_task": next_task
+        })
+        self.obj_hist = [self.get_obj_dict() for _ in range(self.update_task_freq)]
         return obs, info
         
     def step(self, action: ActType) -> Tuple[ObsType, SupportsFloat, bool, Dict[str, Any]]:
@@ -55,13 +60,125 @@ class TextWrapper(BaseWrapper):
         obs, reward, done, truncated, _ = self.env.step(action)
         self.obj_hist.append(self.get_obj_dict())
         last_obs = self.obj_hist.pop(0)
-        obj_diff = ""
-        for i in range(0, self.reset_freq-1, self.period_small):
-            idx = min(self.reset_freq-1, i+4)
-            obj_diff += self.get_obj_diff(self.obj_hist[i], self.obj_hist[idx])
+        obj_diff = self.get_obj_diff(last_obs, self.obj_hist[-1])
         text_obs = self._get_text_obs()
-        info = {"text_obs": text_obs, "step": self.env_step, "obj_diff": obj_diff}
+        next_task = self.get_next_task(text_obs)
+        info = {
+            "text_obs": text_obs, 
+            "step": self.env_step, 
+            "obj_diff": obj_diff, 
+            "next_task": next_task
+        }
         return obs, reward, done, truncated, info
+    
+    def get_next_task(self, text_obs):
+        """
+         You see cow, grass, and tree. 
+        You have nothing in your inventory. 
+        Your health level is high, food level is high, drink level is high, energy is high.
+        """
+        
+        split_text_obs = text_obs.split("You")[1:]
+        
+        available_actions = []
+        actions_probw = []
+        
+        if "tree" in split_text_obs[0]:
+            available_actions.append("Chop tree.")
+            actions_probw.append(.5)
+        # if "grass" in split_text_obs[0]:
+        #     available_actions.append("Get plant.")
+        #     actions_probw.append(.1)
+        if "cow" in split_text_obs[0]:
+            available_actions.append("Kill the cow.")
+            actions_probw.append(2.)
+        if "stone" in split_text_obs[0]:
+            if "pickaxe" in split_text_obs[1]:
+                available_actions.append("Mine stone.")
+                actions_probw.append(.5)
+        if "water" in split_text_obs[0]:
+            available_actions.append("Drink water.")
+            actions_probw.append(2.)
+        if "coal" in split_text_obs[0]:
+            if "wood pickaxe" in split_text_obs[1]:
+                available_actions.append("Mine coal.")
+                actions_probw.append(1.)
+        if "iron" in split_text_obs[0]:
+            if "stone_pickaxe" in split_text_obs[1]:
+                available_actions.append("Mine iron.")
+                actions_probw.append(1.)
+        if "diamond" in split_text_obs[0]:
+            if "iron pickaxe" in split_text_obs[1]:
+                available_actions.append("Mine diamond.")
+                actions_probw.append(10.)
+        if "zombie" in split_text_obs[0]:
+            if "sword" in split_text_obs[1]:
+                available_actions.append("Kill the zombie.")
+                actions_probw.append(2.)
+            else:
+                available_actions.append("Kill the zombie.")
+                actions_probw.append(1.)
+        if "skeleton" in split_text_obs[0]:
+            if "sword" in split_text_obs[1]:
+                available_actions.append("Kill the skeleton.")
+                actions_probw.append(2.)
+            else:
+                available_actions.append("Kill the skeleton.")
+                actions_probw.append(1.)
+        if "wood," in split_text_obs[1]:
+            # available_actions.append("Place wood.")
+            # actions_probw.append(.2)
+            if "crafting table" in split_text_obs[0]:
+                available_actions.append("Craft wood_pickaxe.")
+                actions_probw.append(1.)
+                available_actions.append("Craft wood_sword.")
+                actions_probw.append(.5)
+            else:
+                available_actions.append("Place crafting table.")
+                actions_probw.append(1.)
+        if "stone," in split_text_obs[1]:
+            # available_actions.append("Place stone.")
+            # actions_probw.append(.2)
+            if "crafting table" in split_text_obs[0]:
+                available_actions.append("Craft stone_pickaxe.")
+                actions_probw.append(1.)
+                available_actions.append("Craft stone_sword.")
+                actions_probw.append(1.)
+        if "iron," in split_text_obs[1]:
+            if "frunace" in split_text_obs[0]:
+                available_actions.append("Craft iron_pickaxe.")
+                actions_probw.append(5.)
+                available_actions.append("Craft iron_sword.")
+                actions_probw.append(5.)
+        # if "plant," in split_text_obs[1]:
+        #     available_actions.append("Place plant.")
+        #     actions_probw.append(.2)
+        if "food level is low" in split_text_obs[2]:
+            if "cow" in split_text_obs[0]:
+                available_actions.append("Kill the cow.")
+                actions_probw.append(3.)
+            else:
+                available_actions.append("Find cows.")
+                actions_probw.append(1.)
+        if "drink level is low" in split_text_obs[2]:
+            if "water" in split_text_obs[0]:
+                available_actions.append("Drink water.")
+                actions_probw.append(1.)
+            else:
+                available_actions.append("Find water.")
+                actions_probw.append(1.)
+        if "energy is low" in split_text_obs[2]:
+            available_actions.append("Sleep.")
+            actions_probw.append(1.)
+            
+        actions_probw = np.array(actions_probw)
+        actions_probw = actions_probw / np.sum(actions_probw)
+        
+        if len(available_actions) > 0:
+            return np.random.choice(available_actions, p=actions_probw)
+        else:
+            return "Chop tree."
+        
     
     def get_obj_dict(self):
         
@@ -72,26 +189,60 @@ class TextWrapper(BaseWrapper):
             obj_dict["inv-" + k] = v
         
         env_obj = self.env.text_view.local_obj(self.env.player)
+        # print("env_obj: ", env_obj)
         for k, v in env_obj.items():
             obj_dict["env-" + k] = v
         
         return obj_dict
     
     def get_obj_diff(self, last_obj, cur_obj):
-        output_string = ""
+        output_string = "you "
         STATUS_ITEMS = ['inv-health', 'inv-food', 'inv-drink', 'inv-energy']
         for k, v in last_obj.items():
             if k in cur_obj:
                 diff = cur_obj[k] - v
                 if k in STATUS_ITEMS and diff < -1:
-                    output_string += ("loss " + str(-diff) + " " + k[4:] + ". ")
+                    output_string += ("loss " + str(-diff) + " " + k[4:] + ", ")
                 elif k in STATUS_ITEMS and diff > 0:
-                    output_string += ("gain " + str(diff) + " " + k[4:] + ". ")
-                elif "inv" in k and k not in STATUS_ITEMS and diff > 0:
-                    output_string += ("get " + str(diff) + " " + k[4:] + ". ")
-                elif "inv" in k and k not in STATUS_ITEMS and diff < 0:
-                    output_string += ("use " + str(-diff) + " " + k[4:] + ". ")
+                    output_string += ("gain " + str(diff) + " " + k[4:] + ", ")
+                elif "inv-" in k and k not in STATUS_ITEMS and diff > 0:
+                    output_string += ("get " + str(diff) + " " + k[4:] + ", ")
+                elif "inv-" in k and k not in STATUS_ITEMS and diff < 0:
+                    output_string += ("use " + str(-diff) + " " + k[4:] + ", ")
+                elif "env-" in k and diff > 0:
+                    if k.lower() in ["env-water", "env-cow"]:
+                        output_string += ("find " + k[4:] + ", ")
                     
+        for k, v in cur_obj.items():
+            if k not in last_obj:
+                output_string += ("find " + k[4:] + ", ")
+                
+        tmp = output_string
+        
+        output_string = output_string[:-2] + "." if output_string[-2:] == ", " else output_string
+        output_string = "" if output_string == "you " else output_string
+        
+        for k, v in last_obj.items():
+            if k in cur_obj and k not in ["env-water"]:
+                diff = cur_obj[k] - v
+                if "env-" in k and diff < 0:
+                    output_string += (" " + str(-diff) + " " + k[4:] + " disappear. ")
+            else:
+                output_string += (" " + str(v) + " " + k[4:] + " disappear. ")
+                
+        for k, v in last_obj.items():
+            if k == "inv-food":
+                diff = cur_obj[k] - v
+                if diff == 0 and "cow disappear" in output_string:
+                    output_string += " Your food level is unchanged."
+            if k == "inv-drink":
+                diff = cur_obj[k] - v
+                if diff == 0 and "water disappear" in output_string:
+                    output_string += " Your drink level is unchanged."
+        
+        if self.env.player.sleeping:
+            output_string += " You are sleeping."
+    
         return output_string
         
     def _get_text_obs(self):

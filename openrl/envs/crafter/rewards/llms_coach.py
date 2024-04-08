@@ -35,7 +35,7 @@ A stone pickaxe is required to collect iron. \
 An iron pickaxe is required to collect diamond. \
 My ultimate goal is to discover as many diverse things as possible, \
 accomplish as many diverse tasks as possible and become the best player in the world. \
-The task description should start with: sleep, eat, kill, find, craft, drink, place, mine, chop. \
+The task description should start with: sleep, eat, kill, find, craft, drink, place, mine, chop, get. \
 Give one suggestion at one time. \
 Minimize choosing craft as an action. \
 Desired format: Reasoning: <reasoning>; Task: <task description>.\n\n"
@@ -64,9 +64,10 @@ Desired format: Reasoning: <reasoning>; Task: <task description>.\n\n"
 COMPLETION_SYSTEM_PROMPT = "\
 You are a helpful assistant that tells me whether the given task in Crafter game has been completed. \
 Desired format: Completion Criteria: <reasoning>; Answer: yes or no.\n\n\
-Here is an example:\n\
+Here is an example: \
 Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: no.\n\n"
 # Just answer yes or no."
+# Desired format: yes or no."
 
 COMPLETE_FEW_SHOT = "\
 The task at hand is to drink water from the nearby stream. \
@@ -84,10 +85,9 @@ class LLMsCoach(nn.Module):
         api_key: str,
         api_base: str,
         model: str,
-        reset_freq: int,
+        update_task_freq: int,
     ):
         super().__init__()
-        self.reset_freq = reset_freq
         self.n_env = 128
         
         self._client = GPTClient(api_key, api_base, model)
@@ -104,33 +104,38 @@ class LLMsCoach(nn.Module):
         
         self._last_state = ["Nothing." for _ in range(self.n_env)]
         self._last_task = ["Survive." for _ in range(self.n_env)]
+        
         self._task_num_try = np.zeros(self.n_env)
         
         self.system_prompt = self.few_shot = ""
 
-        self._step_cnt = 0
+        self.update_task_cnt = 0
+        self.update_task_freq = update_task_freq
+        self.num_try_query_task = 4
+    
     def __call__(
         self, data: Dict[str, Any], past_model_kwargs: Optional[Any] = None
     ) -> Union[np.ndarray, List[Dict[str, Any]]]:
         
-        # initialize last state and last task
         infos = data["infos"]
         
+        # set task to survive for new episodes
         for idx, info in enumerate(infos):
             if info["step"] == 0:
                 self._last_state[idx] = info["text_obs"]
                 self._last_task[idx] = "Survive."
-                self._task_num_try[idx] = 0
+                self._task_num_try[idx] = 1
         
         # query language model periodically
         rewards = np.zeros(self.n_env)
-        if self._step_cnt > 0:
-            self._step_cnt = (self._step_cnt + 1) % self.reset_freq
-            infos = [{"task": task} for task in self._last_task]
-            return rewards, infos
+        if self.update_task_cnt > 0:
+            self.update_task_cnt = (self.update_task_cnt + 1) % self.update_task_freq
+            new_infos = [{"task": task} for task in self._last_task]
+            return rewards, new_infos
+        self.update_task_cnt = (self.update_task_freq + 1) % self.update_task_freq
         
         # update task number of tries
-        self._task_num_try = self._task_num_try + 1
+        self._task_num_try = self._task_num_try - 1
         
         # get prompt for querying task completion
         prompts = []
@@ -138,18 +143,40 @@ class LLMsCoach(nn.Module):
         for idx, info in enumerate(infos):
             if self._last_task[idx] != "Survive.":
                 
-                task2do = "The task at hand is to" + self._last_task[idx].lower() + ". "
-                last_state = "Initially, " + self._last_state[idx] + " "
-                mid = "During the period, you " + info["obj_diff"]
-                text_state = "Currently, " + info["text_obs"] + " "
-                question = task2do + last_state + mid + text_state + self._complete_question
+                # task2do = "The task at hand is to" + self._last_task[idx].lower() + ". "
+                # last_state = "Initially, " + self._last_state[idx] + " "
+                # mid = "During the period, you " + info["obj_diff"]
+                # mid = "" if info["obj_diff"] == "" else mid
+                # text_state = "Currently, " + info["text_obs"] + " "
+                # question = task2do + last_state + mid + text_state + self._complete_question
                 
-                prompt1 = {"role": "system", "content": self._complete_system}
-                # prompt2 = {"role": "user", "content": COMPLETE_FEW_SHOT}
+                # # prompt1 = {"role": "system", "content": self._complete_system}
+                # prompt2 = {"role": "user", "content": self._complete_system + COMPLETE_FEW_SHOT}
                 # prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: yes.\n\n"}     
-                prompt4 = {"role": "user", "content": question}
-                prompts.append([prompt1, prompt4])
-                new_task_idx.append(idx)
+                # prompt4 = {"role": "user", "content": question}
+                # prompts.append([prompt2, prompt3, prompt4])
+                # new_task_idx.append(idx)
+                
+                transi = "During the period, " + info["obj_diff"]
+                transi = "During the period, nothing has changed." if transi == "During the period, " else transi
+                transi = "You are sleeping." if transi == "During the period,  You are sleeping." else transi
+                
+                prefix = "You are a helpful assistant that tells me whether the given task in Crafter game has been completed. "
+                prefix += "Drinking water will replenish drink level. "
+                prefix += "Killing cows will increase food level. "
+                prefix += "Choping trees will get wood. "
+                prefix += "Desired format: Completion Criteria: <reasoning>. Answer: <yes/no>.\n\n"
+                prefix += " The task at hand is to chop tree. During the period, you get 1 wood. 1 tree disappear."
+                prefix += " Has the task been completed?"
+                few_shot = "Completion Criteria: The task's completion depends on the successful chopping of a tree and acquiring the wood; Answer: yes.\n\n"
+                
+                question = "The task at hand is to " + self._last_task[idx].lower() + " " 
+                question += transi + " Has the task been completed?"
+
+                prompt1 = {"role": "user", "content": prefix}
+                prompt2 = {"role": "assistant", "content": few_shot}
+                prompt3 = {"role": "user", "content": question}
+                prompts.append([prompt1, prompt2, prompt3])
         
         # query LLMs
         if len(prompts) == 0:
@@ -159,56 +186,64 @@ class LLMsCoach(nn.Module):
             responses = [response.choices[0].message.content for response in responses]
             
         # get task completion
-        task_completion = []
+        need_new_task = []
         rewards = []
         response_idx = 0
         for idx in range(self.n_env):
             if self._last_task[idx] == "Survive.":
-                task_completion.append(True)
+                need_new_task.append(True)
                 rewards.append(True)
             else:
-                completed = "yes" in responses[response_idx].lower()
-                time_out = (self._task_num_try[idx] > 3)
-                task_completion.append(completed or time_out)
+                completed = "answer: yes" in responses[response_idx].lower()
+                time_out = (self._task_num_try[idx] == 0)
+                need_new_task.append(completed or time_out)
                 rewards.append(completed)
                 response_idx += 1
+                if completed:
+                    print("completed task name: ", self._last_task[idx])
         
-        # get prompt for querying task description
-        prompts = []
-        new_task_idx = []
-        for idx, info in enumerate(infos):
-            if task_completion[idx]:
-                current_state = info["text_obs"]
-                user_content = current_state + self._task_user_question
-                system_content = self._task_system
-                prompt1 = {"role": "system", "content": system_content}
-                prompt2 = {"role": "user", "content": "You see tree. You have nothing in your inventory. Your health level is high, food level is high, drink level is high, energy is high. What do you do?"}
-                prompt3 = {"role": "assistant", "content": "Reasoning: The inventory is empty now, chop down a tree to get some wood; Task: Obtain a wood log.\n\n"}
-                prompt4 = {"role": "user", "content": user_content}
-                # print("state: ", user_content)
-                prompts.append([prompt1, prompt2, prompt3, prompt4])
-                new_task_idx.append(idx)
+        if False: #all(need_new_task):
         
-        # query LLMs
-        if len(prompts) == 0:
-            responses = []
-        else:
-            responses = asyncio.run(self._client.async_query(prompts))
-            responses = [response.choices[0].message.content for response in responses]
-        
-        # get task description
-        task_description = []
-        for idx, response in enumerate(responses):
-            if "Task:" in response:
-                task_response = response.split("Task:")[1]
+            # get prompt for querying task description
+            prompts = []
+            new_task_idx = []
+            for idx, info in enumerate(infos):
+                if need_new_task[idx]:
+                    current_state = info["text_obs"]
+                    user_content = current_state + self._task_user_question
+                    system_content = self._task_system
+                    prompt1 = {"role": "system", "content": system_content}
+                    prompt2 = {"role": "user", "content": "You see tree. You have nothing in your inventory. Your health level is high, food level is high, drink level is high, energy is high. What do you do?"}
+                    prompt3 = {"role": "assistant", "content": "Reasoning: The inventory is empty now, chop down a tree to get some wood; Task: Obtain a wood log.\n\n"}
+                    prompt4 = {"role": "user", "content": user_content}
+                    # print("state: ", user_content)
+                    prompts.append([prompt1, prompt2, prompt3, prompt4])
+                    new_task_idx.append(idx)
+            
+            # query LLMs
+            if len(prompts) == 0:
+                responses = []
             else:
-                task_response = "Survive."
-            true_idx = new_task_idx[idx]
-            if "survive" not in self._last_task[true_idx].lower():
-                if self._task_num_try[true_idx] <= 3:
-                    print("complete task:", self._last_task[true_idx])
-            self._last_task[true_idx] = task_response
-            self._task_num_try[true_idx] = 0
+                responses = asyncio.run(self._client.async_query(prompts))
+                responses = [response.choices[0].message.content for response in responses]
+            
+            # get task description
+            for idx, response in enumerate(responses):
+                if "Task:" in response:
+                    task_response = response.split("Task:")[1]
+                else:
+                    task_response = "Survive."
+                true_idx = new_task_idx[idx]
+                self._last_task[true_idx] = task_response
+                self._task_num_try[true_idx] = self.num_try_query_task
+                
+        else:
+            
+            for idx, info in enumerate(infos):
+                if need_new_task[idx]:
+                    task_response = info["next_task"]
+                    self._last_task[idx] = task_response
+                    self._task_num_try[idx] = 1
                 
         # update last state
         for idx, info in enumerate(infos):
@@ -216,8 +251,6 @@ class LLMsCoach(nn.Module):
         
         rewards = np.array(rewards) * 1.
         
-        self._step_cnt = (self._step_cnt + 1) % self.reset_freq
+        new_infos = [{"task": task} for task in self._last_task]
         
-        infos = [{"task": task} for task in self._last_task]
-        
-        return rewards, infos
+        return rewards, new_infos
