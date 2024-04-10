@@ -29,21 +29,6 @@ from openrl.runners.common import PPOAgent as Agent
 from PIL import Image, ImageDraw, ImageFont
 
 
-COMPLETION_SYSTEM_PROMPT = "\
-You are a helpful assistant that tells me whether the given task in Crafter game has been completed. \
-Desired format: Completion Criteria: <reasoning>. Answer: yes or no.\n\n\
-Here is an example:\n\
-Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: no.\n\n"
-
-COMPLETE_FEW_SHOT = "\
-The task at hand is to drink water from the nearby stream. \
-Initially, you see grass, and tree. You have nothing in your inventory. \
-Your health is high, food level is high, drink level is low, energy level is high. \
-Currently, You see grass, tree, and water. \
-You have nothing in your inventory. \
-Your health is high, food level is high, drink level is high, energy level is high. \
-Has the task been completed?"
-
 def save_img(obs, task, idx=0):
     img = obs["policy"]["image"][0, 0]
     img = img.transpose((1, 2, 0))
@@ -72,7 +57,7 @@ def render():
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("crafter_agent-100M-2/")
+    agent.load("crafter_agent-10M-3/")
 
     # begin to test
     trajectory = []
@@ -87,12 +72,12 @@ def render():
     img = save_img(obs, current_task)
     trajectory.append(img)
     
-    from openrl.envs.crafter.gpt_client import GPTClient
-    import asyncio
-    api_key = "EMPTY" #"isQQQqPJUUSWXvz4NqG36Q6v5pxdPTkG",
-    api_base = "http://localhost:11016/v1" # "https://azure-openai-api.shenmishajing.workers.dev/v1", 
-    model = "mistralai/Mistral-7B-Instruct-v0.2" #"berkeley-nest/Starling-LM-7B-alpha" #"gpt-4-32k",
-    client = GPTClient(api_key, api_base, model)
+    # from openrl.envs.crafter.gpt_client import GPTClient
+    # import asyncio
+    # api_key = "EMPTY" #"isQQQqPJUUSWXvz4NqG36Q6v5pxdPTkG",
+    # api_base = "http://localhost:11016/v1" # "https://azure-openai-api.shenmishajing.workers.dev/v1", 
+    # model = "mistralai/Mistral-7B-Instruct-v0.2" #"berkeley-nest/Starling-LM-7B-alpha" #"gpt-4-32k",
+    # client = GPTClient(api_key, api_base, model)
     
     query = 0
     ex = 0
@@ -104,31 +89,31 @@ def render():
         obs, r, done, info = env.step(action, given_task=[current_task])
         step += 1
         
-        # if end with .
-        if current_task[-1] == ".":
+        # # if end with .
+        # if current_task[-1] == ".":
             
-            transi = "During the period, " + info[0]["obj_diff"]
-            transi = "During the period, nothing has changed." if transi == "During the period, " else transi
-            transi = "You are sleeping." if transi == "During the period,  You are sleeping." else transi
+        #     transi = "During the period, " + info[0]["obj_diff"]
+        #     transi = "During the period, nothing has changed." if transi == "During the period, " else transi
+        #     transi = "You are sleeping." if transi == "During the period,  You are sleeping." else transi
             
-            prefix = "You are a helpful assistant that tells me whether the given task in Crafter game has been completed. Be concise and deterministic."
-            prefix += "Desired format: Completion Criteria: <reasoning>. Answer: <yes/no>.\n\n"
-            prefix += " The task at hand is to chop tree. During the period, you get 1 wood. 1 tree disappear."
-            prefix += " Has the task been completed?"
-            few_shot_a = "Completion Criteria: The task's completion depends on the successful chopping of a tree and acquiring the wood; Answer: yes.\n\n"
-            question = "The task at hand is to " + current_task + ". " 
-            question += transi + " Has the task been completed?"
+        #     prefix = "You are a helpful assistant that tells me whether the given task in Crafter game has been completed. Be concise and deterministic."
+        #     prefix += "Desired format: Completion Criteria: <reasoning>. Answer: <yes/no>.\n\n"
+        #     prefix += " The task at hand is to chop tree. During the period, you get 1 wood. 1 tree disappear."
+        #     prefix += " Has the task been completed?"
+        #     few_shot_a = "Completion Criteria: The task's completion depends on the successful chopping of a tree and acquiring the wood; Answer: yes.\n\n"
+        #     question = "The task at hand is to " + current_task + ". " 
+        #     question += transi + " Has the task been completed?"
             
-            prompt1 = {"role": "user", "content": prefix}
-            prompt2 = {"role": "assistant", "content": few_shot_a}
-            prompt3 = {"role": "user", "content": question}
-            prompts = [[prompt1, prompt2, prompt3]]
+        #     prompt1 = {"role": "user", "content": prefix}
+        #     prompt2 = {"role": "assistant", "content": few_shot_a}
+        #     prompt3 = {"role": "user", "content": question}
+        #     prompts = [[prompt1, prompt2, prompt3]]
             
-            responses = asyncio.run(client.async_query(prompts))
-            responses = responses[0].choices[0].message.content
+        #     responses = asyncio.run(client.async_query(prompts))
+        #     responses = responses[0].choices[0].message.content
             
-            print("prompts: ", prompts)
-            print("Response: ", responses)
+        #     print("prompts: ", prompts)
+        #     print("Response: ", responses)
             
         img = save_img(obs, current_task, step)
         trajectory.append(img)

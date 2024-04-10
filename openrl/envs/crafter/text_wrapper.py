@@ -37,6 +37,8 @@ class TextWrapper(BaseWrapper):
         
         self.update_task_freq = 4
         
+        self._cur_task = "Survive."
+        
     def reset(
         self,
         seed: Optional[int] = None,
@@ -53,6 +55,9 @@ class TextWrapper(BaseWrapper):
             "next_task": next_task
         })
         self.obj_hist = [self.get_obj_dict() for _ in range(self.update_task_freq)]
+        
+        self._cur_task = next_task
+        
         return obs, info
         
     def step(self, action: ActType) -> Tuple[ObsType, SupportsFloat, bool, Dict[str, Any]]:
@@ -69,8 +74,11 @@ class TextWrapper(BaseWrapper):
             "obj_diff": obj_diff, 
             "next_task": next_task
         }
+        
+        self._cur_task = next_task
+        
         return obs, reward, done, truncated, info
-    
+
     def get_next_task(self, text_obs):
         """
          You see cow, grass, and tree. 
@@ -80,25 +88,37 @@ class TextWrapper(BaseWrapper):
         
         split_text_obs = text_obs.split("You")[1:]
         
-        available_actions = []
-        actions_probw = []
+        available_actions = [
+            "Find cows.", "Find water.", "Find stone.", "Find tree.",
+            "Chop tree.", "Kill the cow.", "Mine stone.", "Drink water.",
+            "Mine coal.", "Mine iron.", "Mine diamond.", "Kill the zombie.",
+            "Kill the skeleton.", "Craft wood_pickaxe.", "Craft wood_sword.",
+            "Place crafting table.", "Place furnace.", "Craft stone_pickaxe.",
+            "Craft stone_sword.", "Craft iron_pickaxe.", "Craft iron_sword.",
+            "Sleep."
+        ]
+        actions_probw = [
+            0.01, 0.01, 0.01, 0.01,
+            0.0001, 0.0001, 0.0001, 0.0001,
+            0.0001, 0.0001, 0.0001, 0.0001,
+            0.0001, 0.0001, 0.0001, 0.0001,
+            0.0001, 0.0001, 0.0001, 0.0001,
+            0.0001, 0.0001
+        ]
         
         if "tree" in split_text_obs[0]:
             available_actions.append("Chop tree.")
-            actions_probw.append(.5)
-        # if "grass" in split_text_obs[0]:
-        #     available_actions.append("Get plant.")
-        #     actions_probw.append(.1)
+            actions_probw.append(.1)
         if "cow" in split_text_obs[0]:
             available_actions.append("Kill the cow.")
-            actions_probw.append(2.)
+            actions_probw.append(.5)
         if "stone" in split_text_obs[0]:
             if "pickaxe" in split_text_obs[1]:
                 available_actions.append("Mine stone.")
-                actions_probw.append(.5)
+                actions_probw.append(2.)
         if "water" in split_text_obs[0]:
             available_actions.append("Drink water.")
-            actions_probw.append(2.)
+            actions_probw.append(.25)
         if "coal" in split_text_obs[0]:
             if "wood pickaxe" in split_text_obs[1]:
                 available_actions.append("Mine coal.")
@@ -110,66 +130,61 @@ class TextWrapper(BaseWrapper):
         if "diamond" in split_text_obs[0]:
             if "iron pickaxe" in split_text_obs[1]:
                 available_actions.append("Mine diamond.")
-                actions_probw.append(10.)
+                actions_probw.append(1.)
         if "zombie" in split_text_obs[0]:
             if "sword" in split_text_obs[1]:
                 available_actions.append("Kill the zombie.")
-                actions_probw.append(2.)
+                actions_probw.append(1.)
             else:
                 available_actions.append("Kill the zombie.")
-                actions_probw.append(1.)
+                actions_probw.append(.5)
         if "skeleton" in split_text_obs[0]:
             if "sword" in split_text_obs[1]:
                 available_actions.append("Kill the skeleton.")
-                actions_probw.append(2.)
+                actions_probw.append(.75)
             else:
                 available_actions.append("Kill the skeleton.")
-                actions_probw.append(1.)
+                actions_probw.append(.25)
         if "wood," in split_text_obs[1]:
-            # available_actions.append("Place wood.")
-            # actions_probw.append(.2)
             if "crafting table" in split_text_obs[0]:
                 available_actions.append("Craft wood_pickaxe.")
                 actions_probw.append(1.)
                 available_actions.append("Craft wood_sword.")
-                actions_probw.append(.5)
+                actions_probw.append(1.)
             else:
                 available_actions.append("Place crafting table.")
                 actions_probw.append(1.)
         if "stone," in split_text_obs[1]:
-            # available_actions.append("Place stone.")
-            # actions_probw.append(.2)
             if "crafting table" in split_text_obs[0]:
                 available_actions.append("Craft stone_pickaxe.")
-                actions_probw.append(1.)
+                actions_probw.append(3.)
                 available_actions.append("Craft stone_sword.")
-                actions_probw.append(1.)
+                actions_probw.append(3.)
+            available_actions.append("Place furnace.")
+            actions_probw.append(2.)
         if "iron," in split_text_obs[1]:
             if "frunace" in split_text_obs[0]:
                 available_actions.append("Craft iron_pickaxe.")
                 actions_probw.append(5.)
                 available_actions.append("Craft iron_sword.")
                 actions_probw.append(5.)
-        # if "plant," in split_text_obs[1]:
-        #     available_actions.append("Place plant.")
-        #     actions_probw.append(.2)
         if "food level is low" in split_text_obs[2]:
             if "cow" in split_text_obs[0]:
                 available_actions.append("Kill the cow.")
-                actions_probw.append(3.)
+                actions_probw.append(2.)
             else:
                 available_actions.append("Find cows.")
                 actions_probw.append(1.)
         if "drink level is low" in split_text_obs[2]:
             if "water" in split_text_obs[0]:
                 available_actions.append("Drink water.")
-                actions_probw.append(1.)
+                actions_probw.append(.5)
             else:
                 available_actions.append("Find water.")
                 actions_probw.append(1.)
         if "energy is low" in split_text_obs[2]:
             available_actions.append("Sleep.")
-            actions_probw.append(1.)
+            actions_probw.append(2.)
             
         actions_probw = np.array(actions_probw)
         actions_probw = actions_probw / np.sum(actions_probw)
@@ -177,8 +192,7 @@ class TextWrapper(BaseWrapper):
         if len(available_actions) > 0:
             return np.random.choice(available_actions, p=actions_probw)
         else:
-            return "Chop tree."
-        
+            return "Chop tree." 
     
     def get_obj_dict(self):
         

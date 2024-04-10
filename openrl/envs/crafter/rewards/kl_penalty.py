@@ -47,7 +47,7 @@ class KLPenalty(nn.Module):
             device=self.device,
         )
         
-        path = "crafter_agent-100M-3/"
+        path = "crafter_agent-100M-2/"
         print("KL penalty load model from ", path)
         if isinstance(path, str):
             path = pathlib.Path(path)
@@ -65,8 +65,8 @@ class KLPenalty(nn.Module):
         for key in self._ref_net.models:
             self._ref_net.models[key] = self._ref_net.models[key].eval()
         
-        self._alpha = 0.2
-        self._target_kl = 0.05
+        self._alpha = 0.1
+        self._target_kl = 0.1
         self._update_rate = 0.1
         self._clip_coef = 0.2
         self._kl_length = 64

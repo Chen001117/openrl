@@ -112,7 +112,122 @@ class LLMsCoach(nn.Module):
         self.update_task_cnt = 0
         self.update_task_freq = update_task_freq
         self.num_try_query_task = 4
-    
+        
+        self.task_cnt = dict()
+           
+    def get_rewards(self, obj_diff, current_task):
+        
+        
+        if current_task == "Survive.":
+            return True
+        elif current_task == "Chop tree.":
+            suc = "get 1 wood, " in obj_diff
+            suc |= "get 2 wood, " in obj_diff
+            suc |= "get 3 wood, " in obj_diff 
+            suc |= "get 4 wood, " in obj_diff
+            return suc 
+        elif current_task == "Kill the cow.": 
+            suc = "gain 1 food, " in obj_diff
+            suc |= "gain 2 food, " in obj_diff
+            suc |= "gain 3 food, " in obj_diff
+            suc |= "gain 4 food, " in obj_diff
+            suc &= "cow disappear" in obj_diff
+            return suc 
+        elif current_task == "Mine stone.":
+            suc = "get 1 stone, " in obj_diff
+            suc |= "get 2 stone, " in obj_diff
+            suc |= "get 3 stone, " in obj_diff
+            suc |= "get 4 stone, " in obj_diff
+            return suc 
+        elif current_task == "Drink water.":
+            suc = "gain 1 drink, " in obj_diff
+            suc |= "gain 2 drink, " in obj_diff
+            suc |= "gain 3 drink, " in obj_diff
+            suc |= "gain 4 drink, " in obj_diff
+            return suc 
+        elif current_task == "Mine coal.":
+            suc = "get 1 coal, " in obj_diff
+            suc |= "get 2 coal, " in obj_diff
+            suc |= "get 3 coal, " in obj_diff
+            suc |= "get 4 coal, " in obj_diff
+            return suc 
+        elif current_task == "Mine iron.":
+            suc = "get 1 iron, " in obj_diff
+            suc |= "get 2 iron, " in obj_diff
+            suc |= "get 3 iron, " in obj_diff
+            suc |= "get 4 iron, " in obj_diff
+            return suc 
+        elif current_task == "Mine diamond.":
+            suc = "get 1 diamond, " in obj_diff
+            suc |= "get 2 diamond, " in obj_diff
+            suc |= "get 3 diamond, " in obj_diff
+            suc |= "get 4 diamond, " in obj_diff
+            return suc 
+        elif current_task == "Kill the zombie.":
+            suc = "zombie disappear" in obj_diff
+            return suc 
+        elif current_task == "Kill the skeleton.":
+            suc = "skeleton disappear" in obj_diff
+            return suc 
+        elif current_task == "Craft wood_pickaxe.":
+            suc = "get 1 wood_pickaxe, " in obj_diff
+            suc |= "get 2 wood_pickaxe, " in obj_diff
+            suc |= "get 3 wood_pickaxe, " in obj_diff
+            suc |= "get 4 wood_pickaxe, " in obj_diff
+            return suc 
+        elif current_task == "Craft wood_sword.":
+            suc = "get 1 wood_sword, " in obj_diff
+            suc |= "get 2 wood_sword, " in obj_diff
+            suc |= "get 3 wood_sword, " in obj_diff
+            suc |= "get 4 wood_sword, " in obj_diff
+            return suc 
+        elif current_task == "Place crafting table.":
+            suc = "find crafting table, " in obj_diff
+            return suc 
+        elif current_task == "Craft stone_pickaxe.":
+            suc = "get 1 stone_pickaxe, " in obj_diff
+            suc |= "get 2 stone_pickaxe, " in obj_diff
+            suc |= "get 3 stone_pickaxe, " in obj_diff
+            suc |= "get 4 stone_pickaxe, " in obj_diff
+            return suc 
+        elif current_task == "Craft stone_sword.":
+            suc = "get 1 stone_sword, " in obj_diff
+            suc |= "get 2 stone_sword, " in obj_diff
+            suc |= "get 3 stone_sword, " in obj_diff
+            suc |= "get 4 stone_sword, " in obj_diff
+            return suc 
+        elif current_task == "Craft iron_pickaxe.":
+            suc = "get 1 iron_pickaxe, " in obj_diff
+            suc |= "get 2 iron_pickaxe, " in obj_diff
+            suc |= "get 3 iron_pickaxe, " in obj_diff
+            suc |= "get 4 iron_pickaxe, " in obj_diff
+            return suc 
+        elif current_task == "Craft iron_sword.":
+            suc = "get 1 iron_sword, " in obj_diff
+            suc |= "get 2 iron_sword, " in obj_diff
+            suc |= "get 3 iron_sword, " in obj_diff
+            suc |= "get 4 iron_sword, " in obj_diff
+            return suc 
+        elif current_task == "Find cows.":
+            suc = "find cow, " in obj_diff
+            return suc 
+        elif current_task == "Find water.":
+            suc = "find water, " in obj_diff
+            return suc 
+        elif current_task == "Sleep.":
+            suc = "sleeping" in obj_diff
+            return suc 
+        elif current_task == "Place furnace.": 
+            suc = "find furnace, " in obj_diff
+            return suc
+        elif current_task == "Find tree.":
+            suc = "find tree, " in obj_diff
+            return suc
+        elif current_task == "Find stone.":
+            suc = "find stone, " in obj_diff
+            return suc
+        
+     
     def __call__(
         self, data: Dict[str, Any], past_model_kwargs: Optional[Any] = None
     ) -> Union[np.ndarray, List[Dict[str, Any]]]:
@@ -137,70 +252,79 @@ class LLMsCoach(nn.Module):
         # update task number of tries
         self._task_num_try = self._task_num_try - 1
         
-        # get prompt for querying task completion
-        prompts = []
-        new_task_idx = []
-        for idx, info in enumerate(infos):
-            if self._last_task[idx] != "Survive.":
-                
-                # task2do = "The task at hand is to" + self._last_task[idx].lower() + ". "
-                # last_state = "Initially, " + self._last_state[idx] + " "
-                # mid = "During the period, you " + info["obj_diff"]
-                # mid = "" if info["obj_diff"] == "" else mid
-                # text_state = "Currently, " + info["text_obs"] + " "
-                # question = task2do + last_state + mid + text_state + self._complete_question
-                
-                # # prompt1 = {"role": "system", "content": self._complete_system}
-                # prompt2 = {"role": "user", "content": self._complete_system + COMPLETE_FEW_SHOT}
-                # prompt3 = {"role": "assistant", "content": "Completion Criteria: The task's completion would be indicated by an increase in the drink property, as the objective involves consuming water to address thirst; Answer: yes.\n\n"}     
-                # prompt4 = {"role": "user", "content": question}
-                # prompts.append([prompt2, prompt3, prompt4])
-                # new_task_idx.append(idx)
-                
-                transi = "During the period, " + info["obj_diff"]
-                transi = "During the period, nothing has changed." if transi == "During the period, " else transi
-                transi = "You are sleeping." if transi == "During the period,  You are sleeping." else transi
-                
-                prefix = "You are a helpful assistant that tells me whether the given task in Crafter game has been completed. "
-                prefix += "Drinking water will replenish drink level. "
-                prefix += "Killing cows will increase food level. "
-                prefix += "Choping trees will get wood. "
-                prefix += "Desired format: Completion Criteria: <reasoning>. Answer: <yes/no>.\n\n"
-                prefix += " The task at hand is to chop tree. During the period, you get 1 wood. 1 tree disappear."
-                prefix += " Has the task been completed?"
-                few_shot = "Completion Criteria: The task's completion depends on the successful chopping of a tree and acquiring the wood; Answer: yes.\n\n"
-                
-                question = "The task at hand is to " + self._last_task[idx].lower() + " " 
-                question += transi + " Has the task been completed?"
+        if True:
+            # get prompt for querying task completion
+            prompts = []
+            new_task_idx = []
+            for idx, info in enumerate(infos):
+                if self._last_task[idx] != "Survive.":
+                    
+                    transi = "During the period, " + info["obj_diff"]
+                    transi = "During the period, nothing has changed." if transi == "During the period, " else transi
+                    transi = "You are sleeping." if transi == "During the period,  You are sleeping." else transi
+                    
+                    prefix = "You are a helpful assistant that tells me whether the given task in Crafter game has been completed. "
+                    prefix += "Drinking water will replenish drink level. "
+                    prefix += "Killing cows will increase food level. "
+                    prefix += "Choping trees will get wood. "
+                    prefix += "Desired format: Completion Criteria: <reasoning>. Answer: <yes/no>.\n\n"
+                    prefix += " The task at hand is to chop tree. During the period, you get 1 wood. 1 tree disappear."
+                    prefix += " Has the task been completed?"
+                    few_shot = "Completion Criteria: The task's completion depends on the successful chopping of a tree and acquiring the wood; Answer: yes.\n\n"
+                    
+                    question = "The task at hand is to " + self._last_task[idx].lower() + " " 
+                    question += transi + " Has the task been completed?"
 
-                prompt1 = {"role": "user", "content": prefix}
-                prompt2 = {"role": "assistant", "content": few_shot}
-                prompt3 = {"role": "user", "content": question}
-                prompts.append([prompt1, prompt2, prompt3])
+                    prompt1 = {"role": "user", "content": prefix}
+                    prompt2 = {"role": "assistant", "content": few_shot}
+                    prompt3 = {"role": "user", "content": question}
+                    prompts.append([prompt1, prompt2, prompt3])
         
-        # query LLMs
-        if len(prompts) == 0:
-            responses = []
-        else:
-            responses = asyncio.run(self._client.async_query(prompts))
-            responses = [response.choices[0].message.content for response in responses]
-            
-        # get task completion
-        need_new_task = []
-        rewards = []
-        response_idx = 0
-        for idx in range(self.n_env):
-            if self._last_task[idx] == "Survive.":
-                need_new_task.append(True)
-                rewards.append(True)
+            # query LLMs
+            if len(prompts) == 0:
+                responses = []
             else:
-                completed = "answer: yes" in responses[response_idx].lower()
-                time_out = (self._task_num_try[idx] == 0)
-                need_new_task.append(completed or time_out)
-                rewards.append(completed)
-                response_idx += 1
-                if completed:
-                    print("completed task name: ", self._last_task[idx])
+                responses = asyncio.run(self._client.async_query(prompts))
+                responses = [response.choices[0].message.content for response in responses]
+            
+            # get task completion
+            need_new_task = []
+            rewards = []
+            response_idx = 0
+            for idx in range(self.n_env):
+                if self._last_task[idx] == "Survive.":
+                    need_new_task.append(True)
+                    rewards.append(True)
+                else:
+                    completed = "answer: yes" in responses[response_idx].lower()
+                    time_out = (self._task_num_try[idx] == 0)
+                    need_new_task.append(completed or time_out)
+                    rewards.append(completed)
+                    response_idx += 1
+                    if completed:
+                        print("completed task name: ", self._last_task[idx])
+        
+        else:
+            
+            rewards = []
+            need_new_task = []
+            for idx, info in enumerate(infos):
+                if self._last_task[idx] == "Survive.":
+                    need_new_task.append(True)
+                    rewards.append(True)
+                else:
+                    obj_diff = info["obj_diff"]
+                    cur_task = self._last_task[idx]
+                    completed = self.get_rewards(obj_diff, cur_task)
+                    need_new_task.append(completed)
+                    rewards.append(completed)
+                    if completed and self._last_task[idx]:
+                        if self._last_task[idx] in self.task_cnt:
+                            self.task_cnt[self._last_task[idx]] += 1
+                        else:
+                            self.task_cnt[self._last_task[idx]] = 1
+                        if np.random.rand() < 0.01:
+                            print(self.task_cnt)
         
         if False: #all(need_new_task):
         
