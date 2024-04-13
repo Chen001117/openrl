@@ -100,6 +100,22 @@ class TaskWrapper(VecEnvWrapper):
         }
 
         return obs, rewards, dones, infos
+    
+    def set_task(self, obs, task):
+        
+        task_emb = self.encoder.encode(task)
+        task_emb = np.expand_dims(task_emb, axis=1)
+        
+        obs["policy"] = {
+            "image": obs["policy"]["image"],
+            "task_emb": task_emb,
+        }
+        obs["critic"] = {
+            "image": obs["critic"]["image"],
+            "task_emb": task_emb,
+        }
+        
+        return obs
 
     def get_tasks(self, infos):
         

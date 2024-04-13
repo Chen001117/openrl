@@ -1,0 +1,41 @@
+# call the act function of the agent to implement the given language instruction
+def do(language_instruction: str, agent, env, env_info, trajectory):
+    """
+    example:
+    info = do("Chop trees.", agent, env, trajectory) # the agent will try to chop trees and get woods.
+    available language instructions:
+    - "Chop trees."
+    - "Drink water."
+    - "Mine stone."
+    - "Mine coal."
+    - "Mine iron."
+    - "Mine diamond."
+    - "Kill the cow."
+    - "Kill the zombie."
+    - "Kill the skeleton."
+    - "Craft wood_pickaxe."
+    - "Craft wood_sword."
+    - "Place crafting table."
+    - "Craft stone_pickaxe."
+    - "Craft stone_sword."
+    - "Craft iron_pickaxe."
+    - "Craft iron_sword."
+    - "Find cows."
+    - "Find water."
+    - "Sleep."
+    - "Place furnace."
+    """
+    # the function will do the action according to the language instruction
+    return env_info
+
+# get environment observation 
+def get_obs(env_info):
+    """
+    return the current observation of the environment
+    an example of environment observation
+    You see coal, crafting table, furnace, grass, stone, and water. 
+    You have in your inventory: 2 stone, 2 coal, 1 wood_pickaxe, 1 wood_sword, 1 stone_sword,  
+    Your health level is low, food level is low, drink level is low, energy is low.
+    """
+    # the function will return the observation of the environment
+    

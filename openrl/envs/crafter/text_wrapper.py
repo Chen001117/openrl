@@ -79,6 +79,142 @@ class TextWrapper(BaseWrapper):
         
         return obs, reward, done, truncated, info
 
+    def get_cur_task(self, obj_diff):
+        
+        possible_tasks = []
+        
+        if "gain 1 food, " in obj_diff:
+            possible_tasks.append("Kill the cow.")
+        if "gain 2 food, " in obj_diff:
+            possible_tasks.append("Kill the cow.")
+        if "gain 3 food, " in obj_diff:
+            possible_tasks.append("Kill the cow.")
+        if "gain 4 food, " in obj_diff:
+            possible_tasks.append("Kill the cow.")
+        if "gain 1 drink, " in obj_diff:
+            possible_tasks.append("Drink water.")
+        if "gain 2 drink, " in obj_diff:
+            possible_tasks.append("Drink water.")
+        if "gain 3 drink, " in obj_diff:
+            possible_tasks.append("Drink water.")
+        if "gain 4 drink, " in obj_diff:
+            possible_tasks.append("Drink water.")
+        if "gain 1 energy, " in obj_diff:
+            possible_tasks.append("Sleep.")
+        if "gain 2 energy, " in obj_diff:
+            possible_tasks.append("Sleep.")
+        if "gain 3 energy, " in obj_diff:
+            possible_tasks.append("Sleep.")
+        if "gain 4 energy, " in obj_diff:
+            possible_tasks.append("Sleep.")
+        if "get 1 wood, " in obj_diff:
+            possible_tasks.append("Chop tree.")
+        if "get 2 wood, " in obj_diff:
+            possible_tasks.append("Chop tree.")
+        if "get 3 wood, " in obj_diff:
+            possible_tasks.append("Chop tree.")
+        if "get 4 wood, " in obj_diff:
+            possible_tasks.append("Chop tree.")
+        if "get 1 stone, " in obj_diff:
+            possible_tasks.append("Mine stone.")
+        if "get 2 stone, " in obj_diff:
+            possible_tasks.append("Mine stone.")
+        if "get 3 stone, " in obj_diff:
+            possible_tasks.append("Mine stone.")
+        if "get 4 stone, " in obj_diff:
+            possible_tasks.append("Mine stone.")
+        if "get 1 coal, " in obj_diff:
+            possible_tasks.append("Mine coal.")
+        if "get 2 coal, " in obj_diff:
+            possible_tasks.append("Mine coal.")
+        if "get 3 coal, " in obj_diff:
+            possible_tasks.append("Mine coal.")
+        if "get 4 coal, " in obj_diff:
+            possible_tasks.append("Mine coal.")
+        if "get 1 iron, " in obj_diff:
+            possible_tasks.append("Mine iron.")
+        if "get 2 iron, " in obj_diff:
+            possible_tasks.append("Mine iron.")
+        if "get 3 iron, " in obj_diff:
+            possible_tasks.append("Mine iron.")
+        if "get 4 iron, " in obj_diff:
+            possible_tasks.append("Mine iron.")
+        if "get 1 diamond, " in obj_diff:
+            possible_tasks.append("Mine diamond.")
+        if "get 2 diamond, " in obj_diff:
+            possible_tasks.append("Mine diamond.")
+        if "get 3 diamond, " in obj_diff:
+            possible_tasks.append("Mine diamond.")
+        if "get 4 diamond, " in obj_diff:
+            possible_tasks.append("Mine diamond.")
+        if "zombie disappear" in obj_diff:
+            possible_tasks.append("Kill the zombie.")
+        if "skeleton disappear" in obj_diff:
+            possible_tasks.append("Kill the skeleton.")
+        if "get 1 wood_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft wood_pickaxe.")
+        if "get 2 wood_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft wood_pickaxe.")
+        if "get 3 wood_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft wood_pickaxe.")
+        if "get 4 wood_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft wood_pickaxe.")
+        if "get 1 wood_sword, " in obj_diff:
+            possible_tasks.append("Craft wood_sword.")
+        if "get 2 wood_sword, " in obj_diff:
+            possible_tasks.append("Craft wood_sword.")
+        if "get 3 wood_sword, " in obj_diff:
+            possible_tasks.append("Craft wood_sword.")
+        if "get 4 wood_sword, " in obj_diff:
+            possible_tasks.append("Craft wood_sword.")
+        if "get 1 stone_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft stone_pickaxe.")
+        if "get 2 stone_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft stone_pickaxe.")
+        if "get 3 stone_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft stone_pickaxe.")
+        if "get 4 stone_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft stone_pickaxe.")
+        if "get 1 stone_sword, " in obj_diff:
+            possible_tasks.append("Craft stone_sword.")
+        if "get 2 stone_sword, " in obj_diff:
+            possible_tasks.append("Craft stone_sword.")
+        if "get 3 stone_sword, " in obj_diff:
+            possible_tasks.append("Craft stone_sword.")
+        if "get 4 stone_sword, " in obj_diff:
+            possible_tasks.append("Craft stone_sword.")
+        if "get 1 iron_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft iron_pickaxe.")
+        if "get 2 iron_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft iron_pickaxe.")
+        if "get 3 iron_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft iron_pickaxe.")
+        if "get 4 iron_pickaxe, " in obj_diff:
+            possible_tasks.append("Craft iron_pickaxe.")
+        if "get 1 iron_sword, " in obj_diff:
+            possible_tasks.append("Craft iron_sword.")
+        if "get 2 iron_sword, " in obj_diff:
+            possible_tasks.append("Craft iron_sword.")
+        if "get 3 iron_sword, " in obj_diff:
+            possible_tasks.append("Craft iron_sword.")
+        if "get 4 iron_sword, " in obj_diff:
+            possible_tasks.append("Craft iron_sword.")
+        if "find crafting table, " in obj_diff:
+            possible_tasks.append("Place crafting table.")
+        if "find furnace, " in obj_diff:
+            possible_tasks.append("Place furnace.")
+        if "find cow, " in obj_diff:
+            possible_tasks.append("Find cows.")
+        if "find water, " in obj_diff:
+            possible_tasks.append("Find water.")
+        
+        if len(possible_tasks) == 0:
+            possible_tasks.append("Survive.")
+        
+        chosen_task = np.random.choice(possible_tasks)
+        
+        return chosen_task
+
     def get_next_task(self, text_obs):
         """
          You see cow, grass, and tree. 

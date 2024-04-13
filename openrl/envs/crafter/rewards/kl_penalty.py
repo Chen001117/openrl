@@ -47,7 +47,7 @@ class KLPenalty(nn.Module):
             device=self.device,
         )
         
-        path = "crafter_agent-100M-2/"
+        path = "crafter_agent-100M-3/"
         print("KL penalty load model from ", path)
         if isinstance(path, str):
             path = pathlib.Path(path)

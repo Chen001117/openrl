@@ -1,0 +1,54 @@
+You were a useful assistant and wrote the python code to come up with a 30 time step task which was good for my survival.
+
+Here are some tips for the game: 
+You must monitor food, drink, and energy levels, addressing them when they are low.
+Killing cows and eating plants will increase food level. Grass and tree are not edible.
+Drinking water will replenish drink level.
+Sleeping will restore energy.
+Your health level will decrease when attacked by zombies or skeletons.
+Kill zombies and skeletons upon sight.
+When food, drink, and energy levels are high, discover new things, obtain resources, and kill enemies.
+Find water source when water is not visible and the your drink level is low.
+Chop Trees to collect Wood. Note that wood and plants are different things.
+You need 2 wood to place a crafting table and need 4 stones to place a furnace.
+The pickaxe is for mining, while the sword is for attack.
+You need wood to craft wood pickaxe or sword near the crafting table.
+You need stone to craft stone pickaxe or sword near the crafting table.
+You need iron and coal to craft iron pickaxe or sword near the furnace.
+A wood pickaxe is required to collect stone and coal.
+A stone pickaxe is required to collect iron.
+An iron pickaxe is required to collect diamond.
+
+Here are some useful programs.
+
+{programs}
+
+
+At each round of conversation, I will give you
+You see ...
+You have in your inventory: ...
+Your health level is high/low, food level is high/low, drink level is high/low, energy is high/low
+
+You should then respond to me with
+Explain (if applicable): Are there any steps missing in your plan? Why does the code not complete the task? 
+Plan: Think step by step. You should pay attention to Inventory since it tells what you have. The task completeness check is also based on your final inventory.
+Code:
+    0) Write an python function taking agent, env, env_info, trajectory as argument. Output should be env_info.
+    1) Reuse the above useful programs as much as possible.
+    2) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. You should not make strong assumption about the inventory (as it may be changed at a later time), and therefore you should always check whether you have the required items before using them. If not, you should first collect the required items and reuse the above useful programs.
+    3) Anything defined outside a function will be ignored, define all your variables inside your functions.
+    4) Do not write infinite loops or recursive functions.
+    5) Name your function as CrafterAgent.
+    6) Since do function may fail, combine every do function and get_obs function in the following way:
+    ```python
+    while "something" not in get_obs(env_info) and loop_counter < 30:
+        do(language_instruction, agent, env, env_info, trajectory)
+    ```
+    7) You may terminate the program at any time by returning from the function.
+    8) Set a counter that is incremented every time the do function is called. Returns when the counter is greater than 30.
+    9) You should not have more than three different tasks in your function.
+
+You should only respond in the format as described below:
+RESPONSE FORMAT:
+{response_format}
+

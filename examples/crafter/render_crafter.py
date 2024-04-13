@@ -42,7 +42,7 @@ def render():
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("crafter_agent-2M-5/")
+    agent.load("crafter_agent-2M-14/")
 
     # begin to test
     trajectory = []
@@ -54,7 +54,7 @@ def render():
         tasks = ["Chop tree.", "Mine stone.", "Kill the cow."]
         t = np.random.randint(0, 3)
         t = tasks[t]
-        obs, r, done, info = env.step(action, given_task=["Chop tree."])
+        obs, r, done, info = env.step(action, given_task=["Mine stone."])
         step += 1
 
         if all(done):

@@ -26,9 +26,9 @@ class GPTClient:
         response = await self.client.chat.completions.create(
             model=self.model_name,
             messages=msg,
-            # max_tokens=100,
-            stop=['.\n\n'],
-            temperature=1.,
+            # max_tokens=50,
+            # stop=['.\n\n'],
+            # temperature=1.,
             # frequency_penalty=0
         )
         

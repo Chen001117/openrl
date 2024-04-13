@@ -67,69 +67,41 @@ def render():
     print("Enter the task: ", end="")
     current_task = input()
     last_obs = info[0]["text_obs"]
+    print("Enter the repeat time:", end="")
+    cnt_down = int(input())
     print("")
+    cnt_down -= 1
 
     img = save_img(obs, current_task)
     trajectory.append(img)
     
-    # from openrl.envs.crafter.gpt_client import GPTClient
-    # import asyncio
-    # api_key = "EMPTY" #"isQQQqPJUUSWXvz4NqG36Q6v5pxdPTkG",
-    # api_base = "http://localhost:11016/v1" # "https://azure-openai-api.shenmishajing.workers.dev/v1", 
-    # model = "mistralai/Mistral-7B-Instruct-v0.2" #"berkeley-nest/Starling-LM-7B-alpha" #"gpt-4-32k",
-    # client = GPTClient(api_key, api_base, model)
-    
-    query = 0
-    ex = 0
-    
     while True:
         
         # Based on environmental observation input, predict next action.
+        obs = env.set_task(obs, [current_task])
         action, _ = agent.act(obs, deterministic=True)
         obs, r, done, info = env.step(action, given_task=[current_task])
         step += 1
-        
-        # # if end with .
-        # if current_task[-1] == ".":
-            
-        #     transi = "During the period, " + info[0]["obj_diff"]
-        #     transi = "During the period, nothing has changed." if transi == "During the period, " else transi
-        #     transi = "You are sleeping." if transi == "During the period,  You are sleeping." else transi
-            
-        #     prefix = "You are a helpful assistant that tells me whether the given task in Crafter game has been completed. Be concise and deterministic."
-        #     prefix += "Desired format: Completion Criteria: <reasoning>. Answer: <yes/no>.\n\n"
-        #     prefix += " The task at hand is to chop tree. During the period, you get 1 wood. 1 tree disappear."
-        #     prefix += " Has the task been completed?"
-        #     few_shot_a = "Completion Criteria: The task's completion depends on the successful chopping of a tree and acquiring the wood; Answer: yes.\n\n"
-        #     question = "The task at hand is to " + current_task + ". " 
-        #     question += transi + " Has the task been completed?"
-            
-        #     prompt1 = {"role": "user", "content": prefix}
-        #     prompt2 = {"role": "assistant", "content": few_shot_a}
-        #     prompt3 = {"role": "user", "content": question}
-        #     prompts = [[prompt1, prompt2, prompt3]]
-            
-        #     responses = asyncio.run(client.async_query(prompts))
-        #     responses = responses[0].choices[0].message.content
-            
-        #     print("prompts: ", prompts)
-        #     print("Response: ", responses)
-            
+           
         img = save_img(obs, current_task, step)
         trajectory.append(img)
         
-        print("Enter the task:", end="")
-        input_text = input()
-        current_task = input_text if input_text != "" else current_task
-        if current_task == "exit":
-            break
-        last_state = info[0]["text_obs"]
+        if cnt_down == 0:
+            print("Enter the task:", end="")
+            input_text = input()
+            current_task = input_text if input_text != "" else current_task
+            if current_task == "exit":
+                break
+            print("Enter the repeat time:", end="")
+            cnt_down = int(input())
+            last_state = info[0]["text_obs"]
+        cnt_down -= 1
                 
 
         if all(done):
             break
         
-    print("step", step)
+    print("total_step", step)
 
     # save the trajectory to gif
     trajectory[0].save(
@@ -139,11 +111,20 @@ def render():
         duration=100, 
         loop=0
     )
-    # import imageio
-    # imageio.mimsave("run_results/crafter.gif", trajectory, duration=0.01)
 
     env.close()
 
 
 if __name__ == "__main__":
     render()
+
+
+# chop trees.
+# 30
+# craft wood_pickaxe.
+# 5
+# mine stones.
+# 50
+# drink water.
+# 30
+# exit
