@@ -29,26 +29,3 @@ def do(language, agent, env, info, trajectory):
 
 def get_obs(info):
     return info[-1][0]
-def survival_prep(agent, env, env_info, trajectory):
-    loop_counter = 0
-    inventory_obs = get_obs(env_info)
-    
-    # Chop trees until wood is obtained or the loop counter reaches 30.
-    while "wood" not in inventory_obs and loop_counter < 30:
-        env_info = do("Chop trees.", agent, env, env_info, trajectory)
-        inventory_obs = get_obs(env_info)
-        loop_counter += 1
-        if loop_counter >= 30:
-            return env_info
-    
-    # Craft a wood pickaxe if there is wood in the inventory.
-    if "wood" in inventory_obs:
-        env_info = do("Craft wood_pickaxe.", agent, env, env_info, trajectory)
-        loop_counter += 1
-
-    # Craft a wood sword if there is wood in the inventory.
-    if "wood" in inventory_obs and loop_counter < 30:
-        env_info = do("Craft wood_sword.", agent, env, env_info, trajectory)
-        loop_counter += 1
-
-    return env_info

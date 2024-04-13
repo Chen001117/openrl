@@ -47,26 +47,29 @@ class KLPenalty(nn.Module):
             device=self.device,
         )
         
-        path = "crafter_agent-100M-3/"
-        print("KL penalty load model from ", path)
-        if isinstance(path, str):
-            path = pathlib.Path(path)
+        path = pathlib.Path(base_model)
         assert path.exists(), f"{path} does not exist"
         if path.is_dir():
             path = path / "module.pt"
         assert path.exists(), f"{path} does not exist"
+        print("KL penalty load model from ", path)
         
-        module = torch.load(path)
-        self._ref_net.models["policy"].base = module.models["policy"].base
-        self._ref_net.models["policy"].rnn = module.models["policy"].rnn
-        self._ref_net.models["policy"].act = module.models["policy"].act
+        if not torch.cuda.is_available():
+            raise NotImplementedError("KL penalty only support cuda")
+        else:
+            self._ref_net = torch.load(path)
+        
+        # module = torch.load(path)
+        # self._ref_net.models["policy"].base = module.models["policy"].base
+        # self._ref_net.models["policy"].rnn = module.models["policy"].rnn
+        # self._ref_net.models["policy"].act = module.models["policy"].act
         # self._ref_net.models["policy"].out_layer = module.models["policy"].base.out_layer
         
         for key in self._ref_net.models:
             self._ref_net.models[key] = self._ref_net.models[key].eval()
         
-        self._alpha = 0.1
-        self._target_kl = 0.1
+        self._alpha = 0.05
+        self._target_kl = 0.2
         self._update_rate = 0.1
         self._clip_coef = 0.2
         self._kl_length = 64

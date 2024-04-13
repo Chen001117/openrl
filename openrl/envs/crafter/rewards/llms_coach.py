@@ -252,7 +252,7 @@ class LLMsCoach(nn.Module):
         # update task number of tries
         self._task_num_try = self._task_num_try - 1
         
-        if True:
+        if False:
             # get prompt for querying task completion
             prompts = []
             new_task_idx = []
@@ -316,15 +316,8 @@ class LLMsCoach(nn.Module):
                     obj_diff = info["obj_diff"]
                     cur_task = self._last_task[idx]
                     completed = self.get_rewards(obj_diff, cur_task)
-                    need_new_task.append(completed)
+                    need_new_task.append(completed or self._task_num_try[idx] == 0)
                     rewards.append(completed)
-                    if completed and self._last_task[idx]:
-                        if self._last_task[idx] in self.task_cnt:
-                            self.task_cnt[self._last_task[idx]] += 1
-                        else:
-                            self.task_cnt[self._last_task[idx]] = 1
-                        if np.random.rand() < 0.01:
-                            print(self.task_cnt)
         
         if False: #all(need_new_task):
         
@@ -367,8 +360,8 @@ class LLMsCoach(nn.Module):
                 if need_new_task[idx]:
                     task_response = info["next_task"]
                     self._last_task[idx] = task_response
-                    self._task_num_try[idx] = 1
-                
+                    self._task_num_try[idx] = 4
+        
         # update last state
         for idx, info in enumerate(infos):
             self._last_state[idx] = info["text_obs"]
