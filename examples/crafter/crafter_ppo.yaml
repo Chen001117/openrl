@@ -20,7 +20,7 @@ reward_class:
     "api_key": "EMPTY", #"isQQQqPJUUSWXvz4NqG36Q6v5pxdPTkG",
     "api_base": "http://localhost:11017/v1", # "https://azure-openai-api.shenmishajing.workers.dev/v1", 
     "model": "mistralai/Mistral-7B-Instruct-v0.2", # "berkeley-nest/Starling-LM-7B-alpha", #"meta-llama/Llama-2-70b-chat-hf" #"gpt-4-32k",
-    "base_model": "/zfsauton2/home/wentsec/openrl/examples/crafter/models/crafter_agent-100M-2",
+    "base_model": "/zfsauton2/home/wentsec/openrl/examples/crafter/models/crafter_agent-100M-3",
     "update_task_freq": 1,
   }
 vec_info_class:

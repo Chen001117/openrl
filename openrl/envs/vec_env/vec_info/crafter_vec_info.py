@@ -18,6 +18,9 @@ class CrafterVecInfo(BaseVecInfo):
         self.log_items = [
             "alpha",
             "kl_div",
+            "kl_rewards",
+            "original_rewards",
+            "instruction_following_rewards",
         ]
 
     def statistics(self, buffer: Any) -> Dict[str, Any]:

@@ -36,7 +36,6 @@ class TextWrapper(BaseWrapper):
         self.cfg = cfg
         self.reward_class = reward_class
         
-        self.update_task_freq = 4
         self._cur_task = "Survive."
         
         self.names = {value : key for (key, value) in self.env._world._mat_ids.items()}
@@ -73,8 +72,6 @@ class TextWrapper(BaseWrapper):
         self.last_privileged_info = self._get_privileged_info()
         self._cur_task = next_task
         
-        self.diff_history = [""] * self.update_task_freq
-        
         return obs, info
         
     def step(self, action: ActType) -> Tuple[ObsType, SupportsFloat, bool, Dict[str, Any]]:
@@ -88,12 +85,10 @@ class TextWrapper(BaseWrapper):
         current_privileged_info = self._get_privileged_info()
         diff = self._get_diff(self.last_privileged_info, current_privileged_info)
         self.last_privileged_info = current_privileged_info
-        self.diff_history.append(diff)
-        self.diff_history.pop(0)
         
         action_masks = np.ones(self.env.action_space.n)
-        # if "gained 1 stone" in diff:
-        #     action_masks[7] = 0.
+        if "gained 1 stone" in diff:
+            action_masks[7] = 0.
         # if action == 7 and "stone" in self._get_inventory():
         #     action_masks[5] = 0.
             
@@ -101,7 +96,7 @@ class TextWrapper(BaseWrapper):
             "text_obs": text_obs, 
             "step": self.env_step, 
             "next_task": next_task,
-            "obj_diff": diff, #"".join(self.diff_history), 
+            "obj_diff": diff, 
             "action_masks": action_masks,
         }
         
@@ -263,7 +258,7 @@ class TextWrapper(BaseWrapper):
             "Craft stone_sword.", "Craft iron_pickaxe.", "Craft iron_sword.",
             "Sleep."
         ]
-        return np.random.choice(available_actions)
+        # return np.random.choice(available_actions)
         actions_probw = [
             0.01, 0.01, 0.01, 0.01,
             0.0001, 0.0001, 0.0001, 0.0001,

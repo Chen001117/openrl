@@ -88,7 +88,7 @@ class LLMsCoach(nn.Module):
         update_task_freq: int,
     ):
         super().__init__()
-        self.n_env = 1
+        self.n_env = 128
         
         # self._client = GPTClient(api_key, api_base, model)
         # api_key = "EMPTY"
@@ -235,6 +235,7 @@ class LLMsCoach(nn.Module):
         infos = data["infos"]
         
         if "task" in data:
+            # raise ValueError("Task should not be in data.")
             self._last_task = data["task"]
         
         # set task to survive for new episodes
@@ -376,8 +377,14 @@ class LLMsCoach(nn.Module):
         for idx, info in enumerate(infos):
             self._last_state[idx] = info["text_obs"]
         
-        rewards = np.array(rewards) * 1.
+        rewards = np.array(rewards) * 4.
         
-        new_infos = [{"task": task} for task in self._last_task]
+        new_infos = []
+        for i in range(self.n_env):
+            env_dict = {
+                "task": self._last_task[i],
+                "instruction_following_rewards": rewards[i],
+            }
+            new_infos.append(env_dict)
         
         return rewards, new_infos

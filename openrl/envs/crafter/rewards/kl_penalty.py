@@ -68,8 +68,8 @@ class KLPenalty(nn.Module):
         for key in self._ref_net.models:
             self._ref_net.models[key] = self._ref_net.models[key].eval()
         
-        self._alpha = 0.05
-        self._target_kl = 0.2
+        self._alpha = 0.2
+        self._target_kl = 0.05
         self._update_rate = 0.1
         self._clip_coef = 0.2
         self._kl_length = 64
@@ -118,6 +118,7 @@ class KLPenalty(nn.Module):
                 {
                     "alpha": self._alpha,
                     "kl_div": kl.mean(),
+                    "kl_rewards": rew.mean(),
                 }
             )
             

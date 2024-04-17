@@ -23,15 +23,15 @@ class CrafterReward(BaseReward):
         self.batch_rew_funcs = dict()
         self.step_rew_funcs = {
             "lm_rewards": LLMsCoach(api_key, api_base, model, update_task_freq=update_task_freq),
-            # "kl_pen": KLPenalty(env, cfg, base_model),
+            "kl_pen": KLPenalty(env, cfg, base_model),
         }
 
     def step_reward(
         self, data: Dict[str, Any]
     ) -> Union[np.ndarray, List[Dict[str, Any]]]:
         
-        infos = []
         rewards = data["rewards"].copy() * 0.
+        infos = [{"original_rewards": rew} for rew in data["rewards"]]
         
         for rew_func in self.step_rew_funcs.values():
             new_rew, new_info = rew_func(data)

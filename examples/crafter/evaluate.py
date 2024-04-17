@@ -64,8 +64,12 @@ def render(seed, tasks, cnts, model_name):
     obs, info = env.reset()
     
     # set tasks
-    current_task = tasks[0]
-    cnt_down = cnts[0]
+    if tasks is None:
+        current_task = "Survive."
+        cnt_down = 1
+    else:
+        current_task = tasks[0]
+        cnt_down = cnts[0]
     query_cnt = 1
     cnt_down -= 1
     
@@ -89,17 +93,19 @@ def render(seed, tasks, cnts, model_name):
             traj.append(obs["policy"]["image"][0,0])
         
         if cnt_down == 0:
-            if query_cnt >= len(tasks):
-                break
-            current_task = tasks[query_cnt] # all_task[np.random.randint(len(all_task))]
-            if current_task == "exit":
-                break
-            cnt_down = cnts[query_cnt]
-            query_cnt += 1
+            if tasks is None:
+                current_task = all_task[np.random.randint(len(all_task))]
+                cnt_down = 1 
+            else:
+                if query_cnt >= len(tasks):
+                    break
+                current_task = tasks[query_cnt] # all_task[np.random.randint(len(all_task))]
+                cnt_down = cnts[query_cnt]
+                query_cnt += 1
         
         cnt_down -= 1
 
-        if all(done) or env_step >= 1149:
+        if all(done) or env_step >= 1279:
             break
     
     env.close()
@@ -109,30 +115,61 @@ def render(seed, tasks, cnts, model_name):
 
 if __name__ == "__main__":
     
-    model = "models/crafter_agent-10M-37/"
+    model = "models/crafter_agent-2M-27/"
     print("model", model)
     
     traj_diff = []
-    episode_len = []
-    total_reward = []
+    episode_len1 = []
+    episode_len2 = []
+    total_reward1 = []
+    total_reward2 = []
     
     begin = time.time()
     for seed in range(100):
-        tasks = ["Chop tree.", "Craft wood_pickaxe.", "Find stone.", "Mine stone.", "Find water.", "Drink water.", "Find cows.", "Kill the cow.", "Mine stone."]
-        cnts = [20, 5, 10, 50, 10, 30, 10, 15, 1000]
-        traj1, env_step1, total_reward1 = render(seed, tasks, cnts, model)
-        cnts = [1150]
-        traj2, env_step2, total_reward2 = render(seed, tasks, cnts, model)
+        tasks = [
+            "Chop tree.", 
+            "Place crafting table.",
+            "Craft wood_pickaxe.", 
+            "Craft wood_sword.", 
+            "Find stone.", 
+            "Mine stone.", 
+            "Place crafting table.",
+            "Craft stone_pickaxe.", 
+            "Craft stone_sword.", 
+            "Find water.", 
+            "Drink water.", 
+            "Find cows.", 
+            "Kill the cow.", 
+            "Sleep.",
+            "Mine stone.", 
+            "Find water.", 
+            "Drink water.", 
+            "Find cows.", 
+            "Kill the cow.", 
+            "Sleep.",
+            "Mine stone.", 
+        ]
+        cnts = [
+            30, 2, 2, 1, 10, 30, 2, 2, 1, 10, 10, 10, 10, 10, 100, 10, 10, 10, 10, 10, 1000
+        ]
+        traj1, env_step1, r1 = render(seed, tasks, cnts, model)
+        traj2, env_step2, r2 = render(seed, None, None, model)
         min_len = min(len(traj1), len(traj2))
         diff = np.array(traj1)[:min_len] - np.array(traj2)[:min_len]
         diff = np.mean((diff**2).sum(-1).sum(-1).sum(-1))
         
-        episode_len.append(env_step1)
-        total_reward.append(total_reward1)
+        episode_len1.append(env_step1)
+        episode_len2.append(env_step2)
+        total_reward1.append(r1)
+        total_reward2.append(r2)
         traj_diff.append(diff)
     
         # print mean
-        print("total_step", np.mean(episode_len), "total_reward", np.mean(total_reward), "traj_diff", np.mean(traj_diff), "time", time.time()-begin)
+        print("survival time-step (good instruction):", np.mean(episode_len1))
+        print("instruction following result (good instruction):", np.mean(total_reward1))
+        print("survival time-step (random instruction):", np.mean(episode_len2))
+        print("instruction following result (random instruction):", np.mean(total_reward2))
+        print("traj_diff", np.mean(traj_diff), "time", time.time()-begin)
 
     print("model", model)
     

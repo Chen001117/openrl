@@ -59,7 +59,7 @@ class MIXBase(nn.Module):
         out_x = None
         if len(self.cnn_keys) > 0:
             cnn_input = self._build_cnn_input(x)
-            out_x = self.cnn(cnn_input)
+            out_x = self.cnn(cnn_input).detach()
 
         if len(self.mlp_keys) > 0:
             mlp_input = self._build_mlp_input(x)
