@@ -22,6 +22,7 @@ from gymnasium.core import ActType, ObsType, WrapperObsType
 
 from openrl.envs.wrappers.base_wrapper import BaseWrapper
 
+import copy 
 import numpy as np
 
 ArrayType = TypeVar("ArrayType")
@@ -36,8 +37,20 @@ class TextWrapper(BaseWrapper):
         self.reward_class = reward_class
         
         self.update_task_freq = 4
-        
         self._cur_task = "Survive."
+        
+        self.names = {value : key for (key, value) in self.env._world._mat_ids.items()}
+        self.names[11] = "crafting_table"
+        self.names[13] = "player"
+        self.names[14] = "cow"
+        self.names[15] = "zombie"
+        self.names[16] = "skeleton"
+        self.names[17] = "arrow"
+        self.names[18] = "plant"
+        
+        idx_x, idx_y = np.meshgrid(np.arange(7), np.arange(9))
+        self.dist_map = (idx_x - 3) ** 2 + (idx_y - 4) ** 2
+        self.dist_idx = np.argsort(self.dist_map.flatten())[1:]
         
     def reset(
         self,
@@ -47,32 +60,49 @@ class TextWrapper(BaseWrapper):
     ):
         self.env_step = 0
         obs, info = self.env.reset(seed, options)
-        text_obs = self._get_text_obs()
+        text_obs = self._get_text_state()
         next_task = self.get_next_task(text_obs)
+        action_masks = np.ones(self.env.action_space.n)
         info.update({
             "text_obs": text_obs, 
             "step": self.env_step,
-            "next_task": next_task
+            "next_task": next_task,
+            "action_masks": action_masks,
         })
-        self.obj_hist = [self.get_obj_dict() for _ in range(self.update_task_freq)]
         
+        self.last_privileged_info = self._get_privileged_info()
         self._cur_task = next_task
+        
+        self.diff_history = [""] * self.update_task_freq
         
         return obs, info
         
     def step(self, action: ActType) -> Tuple[ObsType, SupportsFloat, bool, Dict[str, Any]]:
+        
         self.env_step += 1
         obs, reward, done, truncated, _ = self.env.step(action)
-        self.obj_hist.append(self.get_obj_dict())
-        last_obs = self.obj_hist.pop(0)
-        obj_diff = self.get_obj_diff(last_obs, self.obj_hist[-1])
-        text_obs = self._get_text_obs()
+        
+        text_obs = self._get_text_state()
         next_task = self.get_next_task(text_obs)
+        
+        current_privileged_info = self._get_privileged_info()
+        diff = self._get_diff(self.last_privileged_info, current_privileged_info)
+        self.last_privileged_info = current_privileged_info
+        self.diff_history.append(diff)
+        self.diff_history.pop(0)
+        
+        action_masks = np.ones(self.env.action_space.n)
+        # if "gained 1 stone" in diff:
+        #     action_masks[7] = 0.
+        # if action == 7 and "stone" in self._get_inventory():
+        #     action_masks[5] = 0.
+            
         info = {
             "text_obs": text_obs, 
             "step": self.env_step, 
-            "obj_diff": obj_diff, 
-            "next_task": next_task
+            "next_task": next_task,
+            "obj_diff": diff, #"".join(self.diff_history), 
+            "action_masks": action_masks,
         }
         
         self._cur_task = next_task
@@ -222,7 +252,7 @@ class TextWrapper(BaseWrapper):
         Your health level is high, food level is high, drink level is high, energy is high.
         """
         
-        split_text_obs = text_obs.split("You")[1:]
+        split_text_obs = text_obs.split("You")[2:]
         
         available_actions = [
             "Find cows.", "Find water.", "Find stone.", "Find tree.",
@@ -233,6 +263,7 @@ class TextWrapper(BaseWrapper):
             "Craft stone_sword.", "Craft iron_pickaxe.", "Craft iron_sword.",
             "Sleep."
         ]
+        return np.random.choice(available_actions)
         actions_probw = [
             0.01, 0.01, 0.01, 0.01,
             0.0001, 0.0001, 0.0001, 0.0001,
@@ -251,12 +282,12 @@ class TextWrapper(BaseWrapper):
         if "stone" in split_text_obs[0]:
             if "pickaxe" in split_text_obs[1]:
                 available_actions.append("Mine stone.")
-                actions_probw.append(2.)
+                actions_probw.append(.5)
         if "water" in split_text_obs[0]:
             available_actions.append("Drink water.")
             actions_probw.append(.25)
         if "coal" in split_text_obs[0]:
-            if "wood pickaxe" in split_text_obs[1]:
+            if "pickaxe" in split_text_obs[1]:
                 available_actions.append("Mine coal.")
                 actions_probw.append(1.)
         if "iron" in split_text_obs[0]:
@@ -264,158 +295,163 @@ class TextWrapper(BaseWrapper):
                 available_actions.append("Mine iron.")
                 actions_probw.append(1.)
         if "diamond" in split_text_obs[0]:
-            if "iron pickaxe" in split_text_obs[1]:
+            if "iron_pickaxe" in split_text_obs[1]:
                 available_actions.append("Mine diamond.")
                 actions_probw.append(1.)
         if "zombie" in split_text_obs[0]:
             if "sword" in split_text_obs[1]:
                 available_actions.append("Kill the zombie.")
-                actions_probw.append(1.)
+                actions_probw.append(1.5)
             else:
                 available_actions.append("Kill the zombie.")
                 actions_probw.append(.5)
         if "skeleton" in split_text_obs[0]:
             if "sword" in split_text_obs[1]:
                 available_actions.append("Kill the skeleton.")
-                actions_probw.append(.75)
+                actions_probw.append(1.5)
             else:
                 available_actions.append("Kill the skeleton.")
-                actions_probw.append(.25)
-        if "wood," in split_text_obs[1]:
-            if "crafting table" in split_text_obs[0]:
+                actions_probw.append(.5)
+        if "wood" in split_text_obs[1]:
+            if "crafting_table" in split_text_obs[0]:
                 available_actions.append("Craft wood_pickaxe.")
-                actions_probw.append(1.)
+                actions_probw.append(.25)
                 available_actions.append("Craft wood_sword.")
-                actions_probw.append(1.)
+                actions_probw.append(.25)
             else:
                 available_actions.append("Place crafting table.")
-                actions_probw.append(1.)
-        if "stone," in split_text_obs[1]:
-            if "crafting table" in split_text_obs[0]:
+                actions_probw.append(.25)
+        if "stone" in split_text_obs[1]:
+            if "crafting_table" in split_text_obs[0]:
                 available_actions.append("Craft stone_pickaxe.")
                 actions_probw.append(3.)
                 available_actions.append("Craft stone_sword.")
                 actions_probw.append(3.)
             available_actions.append("Place furnace.")
-            actions_probw.append(2.)
-        if "iron," in split_text_obs[1]:
+            actions_probw.append(1.)
+        if "iron" in split_text_obs[1]:
             if "frunace" in split_text_obs[0]:
                 available_actions.append("Craft iron_pickaxe.")
                 actions_probw.append(5.)
                 available_actions.append("Craft iron_sword.")
                 actions_probw.append(5.)
-        if "food level is low" in split_text_obs[2]:
+        if "food: 3/9" in split_text_obs[2] or "food: 2/9" in split_text_obs[2] or "food: 1/9" in split_text_obs[2] or "food: 0/9" in split_text_obs[2]:
             if "cow" in split_text_obs[0]:
                 available_actions.append("Kill the cow.")
                 actions_probw.append(2.)
             else:
                 available_actions.append("Find cows.")
                 actions_probw.append(1.)
-        if "drink level is low" in split_text_obs[2]:
+        if "drink: 3/9" in split_text_obs[2] or "drink: 2/9" in split_text_obs[2] or "drink: 1/9" in split_text_obs[2] or "drink: 0/9" in split_text_obs[2]:
             if "water" in split_text_obs[0]:
                 available_actions.append("Drink water.")
                 actions_probw.append(.5)
             else:
                 available_actions.append("Find water.")
                 actions_probw.append(1.)
-        if "energy is low" in split_text_obs[2]:
+        if "energy: 3/9" in split_text_obs[2] or "energy: 2/9" in split_text_obs[2] or "energy: 1/9" in split_text_obs[2] or "energy: 0/9" in split_text_obs[2]:
             available_actions.append("Sleep.")
             actions_probw.append(2.)
             
         actions_probw = np.array(actions_probw)
         actions_probw = actions_probw / np.sum(actions_probw)
+        chosen_task = np.random.choice(available_actions, p=actions_probw)
         
         if len(available_actions) > 0:
-            return np.random.choice(available_actions, p=actions_probw)
+            return chosen_task
         else:
             return "Chop tree." 
-    
-    def get_obj_dict(self):
-        
-        obj_dict = dict()
-        
-        for k, v in self.env.player.inventory.items():
-            k = "plant" if k == "sapling" else k
-            obj_dict["inv-" + k] = v
-        
-        env_obj = self.env.text_view.local_obj(self.env.player)
-        # print("env_obj: ", env_obj)
-        for k, v in env_obj.items():
-            obj_dict["env-" + k] = v
-        
-        return obj_dict
-    
-    def get_obj_diff(self, last_obj, cur_obj):
-        output_string = "you "
-        STATUS_ITEMS = ['inv-health', 'inv-food', 'inv-drink', 'inv-energy']
-        for k, v in last_obj.items():
-            if k in cur_obj:
-                diff = cur_obj[k] - v
-                if k in STATUS_ITEMS and diff < -1:
-                    output_string += ("loss " + str(-diff) + " " + k[4:] + ", ")
-                elif k in STATUS_ITEMS and diff > 0:
-                    output_string += ("gain " + str(diff) + " " + k[4:] + ", ")
-                elif "inv-" in k and k not in STATUS_ITEMS and diff > 0:
-                    output_string += ("get " + str(diff) + " " + k[4:] + ", ")
-                elif "inv-" in k and k not in STATUS_ITEMS and diff < 0:
-                    output_string += ("use " + str(-diff) + " " + k[4:] + ", ")
-                elif "env-" in k and diff > 0:
-                    if k.lower() in ["env-water", "env-cow"]:
-                        output_string += ("find " + k[4:] + ", ")
-                    
-        for k, v in cur_obj.items():
-            if k not in last_obj:
-                output_string += ("find " + k[4:] + ", ")
-                
-        tmp = output_string
-        
-        output_string = output_string[:-2] + "." if output_string[-2:] == ", " else output_string
-        output_string = "" if output_string == "you " else output_string
-        
-        for k, v in last_obj.items():
-            if k in cur_obj and k not in ["env-water"]:
-                diff = cur_obj[k] - v
-                if "env-" in k and diff < 0:
-                    output_string += (" " + str(-diff) + " " + k[4:] + " disappear. ")
-            else:
-                output_string += (" " + str(v) + " " + k[4:] + " disappear. ")
-                
-        for k, v in last_obj.items():
-            if k == "inv-food":
-                diff = cur_obj[k] - v
-                if diff == 0 and "cow disappear" in output_string:
-                    output_string += " Your food level is unchanged."
-            if k == "inv-drink":
-                diff = cur_obj[k] - v
-                if diff == 0 and "water disappear" in output_string:
-                    output_string += " Your drink level is unchanged."
-        
-        if self.env.player.sleeping:
-            output_string += " You are sleeping."
-    
-        return output_string
-        
-    def _get_text_obs(self):
+
+    # get difference between two frames
+    def _get_diff(self, last_privileged_info, current_privileged_info):
         """
-        Returns a list of strings for the inventory, and list of strings for player status.
-        else returns a sentence formed from the inventory lists: "You have axe, wood..", and status lists "You feel hungry, sleepy..."
+        return a string describing the difference between the last and current privileged information
         """
         
+        diff = ""
+        for k, v in last_privileged_info["inventory"].items():
+            if current_privileged_info["inventory"][k] > v:
+                diff += f"You have gained {current_privileged_info['inventory'][k] - v} {k}. "
+            elif current_privileged_info["inventory"][k] < v:
+                diff += f"You have lost {v - current_privileged_info['inventory'][k]} {k}. "
+        
+        entities = {"cow":14, "zombie":15, "skeleton":16} 
+        for entity_name, entity_value in entities.items():
+            last_map = last_privileged_info["env_map"] == entity_value
+            current_map = current_privileged_info["env_map"] == entity_value
+            for row in range(1, len(last_map) - 1):
+                for col in range(1, len(last_map[0]) - 1):
+                    if last_map[row, col] and not current_map[row, col]:
+                        entity_move = False
+                        if current_map[row-1,col] == True:
+                            current_map[row-1,col] = False
+                            entity_move = True
+                        elif current_map[row+1,col] == True:
+                            current_map[row+1,col] = False
+                            entity_move = True
+                        elif current_map[row,col-1] == True:
+                            current_map[row,col-1] = False
+                            entity_move = True
+                        elif current_map[row,col+1] == True:
+                            current_map[row,col+1] = False
+                            entity_move = True
+                        if not entity_move and self.dist_map[row, col] < 4:
+                            diff += f"You have killed a {entity_name}. "
+        
+        # find something new in the environment
+        
+        env_item = {
+            1: 'water', 3: 'stone', 6: 'tree', 8: 'coal', 
+            9: 'iron', 10: 'diamond', 11: 'crafting table', 
+            12: 'furnace', 14: 'cow', 18: 'plant'
+        }
+        for k, v in env_item.items():
+            last_map_sum = np.sum(last_privileged_info["env_map"] == k)
+            current_map_sum = np.sum(current_privileged_info["env_map"] == k)
+            if last_map_sum == 0 and current_map_sum > 0:
+                diff += f"You have found {v}. "
+                
+        if not last_privileged_info["is_sleeping"] and current_privileged_info["is_sleeping"]:
+            diff += "You fell asleep. "
+            
+        if diff == "":
+            diff = "Nothing has changed. "
+        
+        return diff
+    
+    def _get_privileged_info(self):
+        """
+        return a dictionary containing the player's privileged information
+        """
+        
+        inventory = copy.deepcopy(self.env.player.inventory)
+        env_map = copy.deepcopy(self.env._text_view.get_map(self.env._player.pos))
+        
+        return {"inventory": inventory, "env_map": env_map, "is_sleeping": self.env._player.sleeping}
+      
+    # get text state      
+    def _get_text_state(self):
+        """
+        return a string describing the state of the environment
+        """
+        
+        player_pos = "You are at " + str(self.env._player.pos)
+        surrounding_state = self._get_surrounding_state()
+        inventory = self._get_inventory()
+        inner_state = self._get_inner_state()
+        text_state = player_pos + "\n" + surrounding_state + "\n" + inventory + "\n" + inner_state
+        if self.env._player.sleeping:
+            text_state += "\nYou are sleeping. "
+
+        return text_state  
+    
+    def _get_inventory(self):
+        """
+        return a string describing the player's inventory 
+        """
+        STATUS_MAX_VALUE = 9
         STATUS_ITEMS = ['health', 'food', 'drink', 'energy']
         
-        inner_state = "Your "
-        
-        # the first 4 items in the inventory are the player's status
-        for k, v in self.env.player.inventory.items():
-            if k in STATUS_ITEMS:
-                status = "low" if v <= 3 else "high"
-                if k == "energy":
-                    inner_state += f"{k} is " + status
-                    inner_state += "." 
-                else:
-                    inner_state += f"{k} level is " + status
-                    inner_state += ", "
-
         inventory = "You have in your inventory: "
         empty_inventory = True
         for k, v in self.env.player.inventory.items():
@@ -425,14 +461,46 @@ class TextWrapper(BaseWrapper):
                 empty_inventory = False
         if empty_inventory:
             inventory = "You have nothing in your inventory."
+        if inventory[-2] == ",":
+            inventory = inventory[:-2] + ". "
             
-        surrounding_state = self.env.text_view.local_sentence_view(self.env.player)
-
-        text_state = surrounding_state + " " + inventory + " " + inner_state
+        return inventory
+    
+    def _get_inner_state(self):
+        """
+        return a string describing the player's inner state
+        """
         
-        if self.env.player.sleeping:
-            text_state += " You are sleeping."
-
-        return text_state  
+        STATUS_MAX_VALUE = 9
+        STATUS_ITEMS = ['health', 'food', 'drink', 'energy']
+        inner_state = "Your inner properties: "
         
+        # the first 4 items in the inventory are the player's status
+        for k, v in self.env.player.inventory.items():
+            if k in STATUS_ITEMS:
+                inner_state += f"{k}: {v}/{STATUS_MAX_VALUE}, "
+        inner_state = inner_state[:-2] + ". "
+                
+        return inner_state
+        
+    def _get_surrounding_state(self):
+        
+        # {0: None, 1: 'water', 2: 'grass', 3: 'stone', 4: 'path', 5: 'sand', 
+        # 6: 'tree', 7: 'lava', 8: 'coal', 9: 'iron', 10: 'diamond', 11: 'table', 
+        # 12: 'furnace', 13: 'player', 14: 'cow', 15: 'zombie', 16: 'skeleton', 17: 'arrow', 18: 'plant'}
+        canvas = self.env._text_view.get_map(self.env._player.pos)
+        
+        env_items = ['water', 'stone', 'tree', 'coal', 'iron', 'diamond', 'crafting_table', 'furnace', 'plant', 'cow', 'zombie', 'skeleton']
+        surrounding_items = []
+        for block in canvas.flatten()[self.dist_idx]:
+            if self.names[block] not in surrounding_items and self.names[block] in env_items:
+                surrounding_items.append(self.names[block])
+        if len(surrounding_items) > 0:
+            surrounding_state = "You see around you(from near to far): " + ", ".join(surrounding_items)
+            surrounding_state += ". "
+        else:
+            surrounding_state = "You see nothing around you. "
+        
+        return surrounding_state
+
         

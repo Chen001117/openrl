@@ -48,16 +48,11 @@ class TaskWrapper(VecEnvWrapper):
 
     def reset(
             self, 
-            given_task=[], 
             **kwargs
         ):
         
         obs, info = self.env.reset(**kwargs)
-        # task_emb = self.encoder.encode(["Survive."] * len(obs["policy"]))
-        if len(given_task) == 0:
-            task = ["Survive."] * len(obs["policy"])
-        else:
-            task = given_task
+        task = ["Survive."] * len(obs["policy"])
         task_emb = self.encoder.encode(task)
         task_emb = np.expand_dims(task_emb, axis=1)
         
@@ -76,28 +71,28 @@ class TaskWrapper(VecEnvWrapper):
         self, 
         action: ActType, 
         extra_data: Optional[Dict[str, Any]] = None,
-        given_task=[],
         *args, 
         **kwargs,
     ) -> Union[Any, np.ndarray, np.ndarray, List[Dict[str, Any]]]:
         
         obs, rewards, dones, infos = self.env.step(action, extra_data, *args, **kwargs)
-        # task = self.get_tasks(infos)
-        if len(given_task) == 0:
-            task = self.get_tasks(infos)
-        else:
-            task = given_task
-        task_emb = self.encoder.encode(task)
-        task_emb = np.expand_dims(task_emb, axis=1)
         
-        obs["policy"] = {
-            "image": obs["policy"],
-            "task_emb": task_emb,
-        }
-        obs["critic"] = {
-            "image": obs["critic"],
-            "task_emb": task_emb,
-        }
+        if extra_data is None:
+            obs["policy"] = {"image": obs["policy"]}
+            obs["critic"] = {"image": obs["critic"]}
+        else:
+            task = self.get_tasks(infos)
+            task_emb = self.encoder.encode(task)
+            task_emb = np.expand_dims(task_emb, axis=1)
+        
+            obs["policy"] = {
+                "image": obs["policy"],
+                "task_emb": task_emb,
+            }
+            obs["critic"] = {
+                "image": obs["critic"],
+                "task_emb": task_emb,
+            }
 
         return obs, rewards, dones, infos
     

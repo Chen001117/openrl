@@ -41,23 +41,24 @@ def save_img(obs, task, idx=0):
 
 
 def render():
-    # begin to test
-    env = make(
-        "Crafter",
-        render_mode="human",
-        env_num=1,
-    )
 
     # config
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
+    
+    # begin to test
+    env = make(
+        "Crafter",
+        env_num=1,
+        cfg=cfg
+    )
 
     # init the agent
     agent = Agent(Net(env, cfg=cfg))
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("crafter_agent-10M-3/")
+    agent.load("models/crafter_agent-10M-32/")
 
     # begin to test
     trajectory = []
@@ -66,7 +67,6 @@ def render():
     
     print("Enter the task: ", end="")
     current_task = input()
-    last_obs = info[0]["text_obs"]
     print("Enter the repeat time:", end="")
     cnt_down = int(input())
     print("")
@@ -75,13 +75,17 @@ def render():
     img = save_img(obs, current_task)
     trajectory.append(img)
     
+    total_r = 0
+    
     while True:
         
         # Based on environmental observation input, predict next action.
         obs = env.set_task(obs, [current_task])
-        action, _ = agent.act(obs, deterministic=True)
-        obs, r, done, info = env.step(action, given_task=[current_task])
+        action, _ = agent.act(obs, info=info, deterministic=True)
+        extra_data = {"task": [current_task]} # get correct rewards
+        obs, r, done, info = env.step(action, extra_data=extra_data)
         step += 1
+        total_r += r 
            
         img = save_img(obs, current_task, step)
         trajectory.append(img)
@@ -90,18 +94,16 @@ def render():
             print("Enter the task:", end="")
             input_text = input()
             current_task = input_text if input_text != "" else current_task
-            if current_task == "exit":
+            if current_task == "q":
                 break
             print("Enter the repeat time:", end="")
             cnt_down = int(input())
-            last_state = info[0]["text_obs"]
         cnt_down -= 1
-                
-
+        
         if all(done):
             break
         
-    print("total_step", step)
+    print("\ntotal_step", step)
 
     # save the trajectory to gif
     trajectory[0].save(
@@ -119,12 +121,21 @@ if __name__ == "__main__":
     render()
 
 
-# chop trees.
-# 30
-# craft wood_pickaxe.
+# Chop tree.
+# 20
+# Craft wood_pickaxe.
 # 5
-# mine stones.
+# Mine stone.
 # 50
-# drink water.
+# Drink water.
 # 30
-# exit
+# q
+
+# Chop tree.
+# 95
+# Craft wood_pickaxe.
+# 5
+# Mine stone.
+# 100
+# Drink water.
+# 100

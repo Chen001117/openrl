@@ -4,7 +4,7 @@ def do(language_instruction: str, agent, env, env_info, trajectory):
     example:
     info = do("Chop trees.", agent, env, trajectory) # the agent will try to chop trees and get woods.
     available language instructions:
-    - "Chop trees."
+    - "Chop tree."
     - "Drink water."
     - "Mine stone."
     - "Mine coal."

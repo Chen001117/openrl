@@ -16,6 +16,8 @@
 
 """"""
 
+from tqdm import tqdm
+
 import numpy as np
 
 from openrl.configs.config import create_config_parser
@@ -46,11 +48,9 @@ def render(seed):
     agent.load("models/crafter_agent-100M-2/")
 
     # begin to test
-    trajectory = []
     obs, info = env.reset()
-    step = 0
     total_reward = 0
-    while True:
+    for step in tqdm(range(1001000)):
         
         tasks = ["Chop tree.", "Mine stone.", "Kill the cow."]
         current_task = tasks[np.random.randint(0, 3)]
@@ -59,31 +59,10 @@ def render(seed):
         # Based on environmental observation input, predict next action.
         action, _ = agent.act(obs, info=info, deterministic=True)
         obs, r, done, info = env.step(action)
-        step += 1
-        total_reward += r
-
-        if all(done):
-            break
-
-        img = obs["policy"]["image"][0, 0]
-        img = img.transpose((1, 2, 0))
-        trajectory.append(img)
-        
-    print("step", step, "total_reward", total_reward)
-
-    # save the trajectory to gif
-    import imageio
-
-    imageio.mimsave("run_results/crafter.gif", trajectory, duration=0.01)
 
     env.close()
-    
-    return total_reward
 
 
 if __name__ == "__main__":
-    rewards = []
-    for seed in range(100):
-        reward = render(seed)
-        rewards.append(reward)
-    print("rewards", np.mean(rewards))
+    seed = 1
+    render(seed)

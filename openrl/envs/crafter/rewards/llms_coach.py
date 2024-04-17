@@ -88,9 +88,9 @@ class LLMsCoach(nn.Module):
         update_task_freq: int,
     ):
         super().__init__()
-        self.n_env = 128
+        self.n_env = 1
         
-        self._client = GPTClient(api_key, api_base, model)
+        # self._client = GPTClient(api_key, api_base, model)
         # api_key = "EMPTY"
         # api_base = "http://localhost:11016/v1"
         # model = "berkeley-nest/Starling-LM-7B-alpha"
@@ -117,115 +117,115 @@ class LLMsCoach(nn.Module):
            
     def get_rewards(self, obj_diff, current_task):
         
-        
         if current_task == "Survive.":
             return True
         elif current_task == "Chop tree.":
-            suc = "get 1 wood, " in obj_diff
-            suc |= "get 2 wood, " in obj_diff
-            suc |= "get 3 wood, " in obj_diff 
-            suc |= "get 4 wood, " in obj_diff
+            suc = "gained 1 wood" in obj_diff
+            suc |= "gained 2 wood" in obj_diff
+            suc |= "gained 3 wood" in obj_diff 
+            suc |= "gained 4 wood" in obj_diff
             return suc 
         elif current_task == "Kill the cow.": 
-            suc = "gain 1 food, " in obj_diff
-            suc |= "gain 2 food, " in obj_diff
-            suc |= "gain 3 food, " in obj_diff
-            suc |= "gain 4 food, " in obj_diff
-            suc &= "cow disappear" in obj_diff
+            suc = "gained 1 food" in obj_diff
+            suc |= "gained 2 food" in obj_diff
+            suc |= "gained 3 food" in obj_diff
+            suc |= "gained 4 food" in obj_diff
+            suc &= "killed a cow" in obj_diff
             return suc 
         elif current_task == "Mine stone.":
-            suc = "get 1 stone, " in obj_diff
-            suc |= "get 2 stone, " in obj_diff
-            suc |= "get 3 stone, " in obj_diff
-            suc |= "get 4 stone, " in obj_diff
+            gain_stone_num = obj_diff.count("gained 1 stone")
+            place_stone_num = obj_diff.count("lost 1 stone")
+            suc = gain_stone_num > place_stone_num
             return suc 
         elif current_task == "Drink water.":
-            suc = "gain 1 drink, " in obj_diff
-            suc |= "gain 2 drink, " in obj_diff
-            suc |= "gain 3 drink, " in obj_diff
-            suc |= "gain 4 drink, " in obj_diff
+            suc = "gained 1 drink" in obj_diff
+            suc |= "gained 2 drink" in obj_diff
+            suc |= "gained 3 drink" in obj_diff
+            suc |= "gained 4 drink" in obj_diff
             return suc 
         elif current_task == "Mine coal.":
-            suc = "get 1 coal, " in obj_diff
-            suc |= "get 2 coal, " in obj_diff
-            suc |= "get 3 coal, " in obj_diff
-            suc |= "get 4 coal, " in obj_diff
+            suc = "gained 1 coal" in obj_diff
+            suc |= "gained 2 coal" in obj_diff
+            suc |= "gained 3 coal" in obj_diff
+            suc |= "gained 4 coal" in obj_diff
             return suc 
         elif current_task == "Mine iron.":
-            suc = "get 1 iron, " in obj_diff
-            suc |= "get 2 iron, " in obj_diff
-            suc |= "get 3 iron, " in obj_diff
-            suc |= "get 4 iron, " in obj_diff
+            suc = "gained 1 iron" in obj_diff
+            suc |= "gained 2 iron" in obj_diff
+            suc |= "gained 3 iron" in obj_diff
+            suc |= "gained 4 iron" in obj_diff
             return suc 
         elif current_task == "Mine diamond.":
-            suc = "get 1 diamond, " in obj_diff
-            suc |= "get 2 diamond, " in obj_diff
-            suc |= "get 3 diamond, " in obj_diff
-            suc |= "get 4 diamond, " in obj_diff
+            suc = "gained 1 diamond" in obj_diff
+            suc |= "gained 2 diamond" in obj_diff
+            suc |= "gained 3 diamond" in obj_diff
+            suc |= "gained 4 diamond" in obj_diff
             return suc 
         elif current_task == "Kill the zombie.":
-            suc = "zombie disappear" in obj_diff
+            suc = "killed a zombie" in obj_diff
             return suc 
         elif current_task == "Kill the skeleton.":
-            suc = "skeleton disappear" in obj_diff
+            suc = "killed a skeleton" in obj_diff
             return suc 
         elif current_task == "Craft wood_pickaxe.":
-            suc = "get 1 wood_pickaxe, " in obj_diff
-            suc |= "get 2 wood_pickaxe, " in obj_diff
-            suc |= "get 3 wood_pickaxe, " in obj_diff
-            suc |= "get 4 wood_pickaxe, " in obj_diff
+            suc = "gained 1 wood_pickaxe" in obj_diff
+            suc |= "gained 2 wood_pickaxe" in obj_diff
+            suc |= "gained 3 wood_pickaxe" in obj_diff
+            suc |= "gained 4 wood_pickaxe" in obj_diff
             return suc 
         elif current_task == "Craft wood_sword.":
-            suc = "get 1 wood_sword, " in obj_diff
-            suc |= "get 2 wood_sword, " in obj_diff
-            suc |= "get 3 wood_sword, " in obj_diff
-            suc |= "get 4 wood_sword, " in obj_diff
+            suc = "gained 1 wood_sword" in obj_diff
+            suc |= "gained 2 wood_sword" in obj_diff
+            suc |= "gained 3 wood_sword" in obj_diff
+            suc |= "gained 4 wood_sword" in obj_diff
             return suc 
         elif current_task == "Place crafting table.":
-            suc = "find crafting table, " in obj_diff
+            suc = "found crafting table" in obj_diff
             return suc 
         elif current_task == "Craft stone_pickaxe.":
-            suc = "get 1 stone_pickaxe, " in obj_diff
-            suc |= "get 2 stone_pickaxe, " in obj_diff
-            suc |= "get 3 stone_pickaxe, " in obj_diff
-            suc |= "get 4 stone_pickaxe, " in obj_diff
+            suc = "gained 1 stone_pickaxe" in obj_diff
+            suc |= "gained 2 stone_pickaxe" in obj_diff
+            suc |= "gained 3 stone_pickaxe" in obj_diff
+            suc |= "gained 4 stone_pickaxe" in obj_diff
             return suc 
         elif current_task == "Craft stone_sword.":
-            suc = "get 1 stone_sword, " in obj_diff
-            suc |= "get 2 stone_sword, " in obj_diff
-            suc |= "get 3 stone_sword, " in obj_diff
-            suc |= "get 4 stone_sword, " in obj_diff
+            suc = "gained 1 stone_sword" in obj_diff
+            suc |= "gained 2 stone_sword" in obj_diff
+            suc |= "gained 3 stone_sword" in obj_diff
+            suc |= "gained 4 stone_sword" in obj_diff
             return suc 
         elif current_task == "Craft iron_pickaxe.":
-            suc = "get 1 iron_pickaxe, " in obj_diff
-            suc |= "get 2 iron_pickaxe, " in obj_diff
-            suc |= "get 3 iron_pickaxe, " in obj_diff
-            suc |= "get 4 iron_pickaxe, " in obj_diff
+            suc = "gained 1 iron_pickaxe" in obj_diff
+            suc |= "gained 2 iron_pickaxe" in obj_diff
+            suc |= "gained 3 iron_pickaxe" in obj_diff
+            suc |= "gained 4 iron_pickaxe" in obj_diff
             return suc 
         elif current_task == "Craft iron_sword.":
-            suc = "get 1 iron_sword, " in obj_diff
-            suc |= "get 2 iron_sword, " in obj_diff
-            suc |= "get 3 iron_sword, " in obj_diff
-            suc |= "get 4 iron_sword, " in obj_diff
+            suc = "gained 1 iron_sword" in obj_diff
+            suc |= "gained 2 iron_sword" in obj_diff
+            suc |= "gained 3 iron_sword" in obj_diff
+            suc |= "gained 4 iron_sword" in obj_diff
             return suc 
         elif current_task == "Find cows.":
-            suc = "find cow, " in obj_diff
+            suc = "found cow" in obj_diff
             return suc 
         elif current_task == "Find water.":
-            suc = "find water, " in obj_diff
+            suc = "found water" in obj_diff
             return suc 
         elif current_task == "Sleep.":
-            suc = "sleeping" in obj_diff
-            return suc 
+            suc = "fell asleep" in obj_diff
+            return suc
         elif current_task == "Place furnace.": 
-            suc = "find furnace, " in obj_diff
+            suc = "found furnace" in obj_diff
             return suc
         elif current_task == "Find tree.":
-            suc = "find tree, " in obj_diff
+            suc = "found tree" in obj_diff
             return suc
         elif current_task == "Find stone.":
-            suc = "find stone, " in obj_diff
+            suc = "found stone" in obj_diff
             return suc
+        
+        raise ValueError("Task {} not recognized.".format(current_task))
         
      
     def __call__(
@@ -233,6 +233,9 @@ class LLMsCoach(nn.Module):
     ) -> Union[np.ndarray, List[Dict[str, Any]]]:
         
         infos = data["infos"]
+        
+        if "task" in data:
+            self._last_task = data["task"]
         
         # set task to survive for new episodes
         for idx, info in enumerate(infos):
@@ -266,9 +269,9 @@ class LLMsCoach(nn.Module):
                     prefix = "You are a helpful assistant that tells me whether the given task in Crafter game has been completed. "
                     prefix += "Drinking water will replenish drink level. "
                     prefix += "Killing cows will increase food level. "
-                    prefix += "Choping trees will get wood. "
+                    prefix += "Choping trees will gained wood. "
                     prefix += "Desired format: Completion Criteria: <reasoning>. Answer: <yes/no>.\n\n"
-                    prefix += " The task at hand is to chop tree. During the period, you get 1 wood. 1 tree disappear."
+                    prefix += " The task at hand is to chop tree. During the period, you gained 1 wood. 1 tree disappear."
                     prefix += " Has the task been completed?"
                     few_shot = "Completion Criteria: The task's completion depends on the successful chopping of a tree and acquiring the wood; Answer: yes.\n\n"
                     
@@ -297,8 +300,7 @@ class LLMsCoach(nn.Module):
                     rewards.append(True)
                 else:
                     completed = "answer: yes" in responses[response_idx].lower()
-                    time_out = (self._task_num_try[idx] == 0)
-                    need_new_task.append(completed or time_out)
+                    need_new_task.append(completed or self._task_num_try[idx] == 0)
                     rewards.append(completed)
                     response_idx += 1
                     if completed:
@@ -318,6 +320,14 @@ class LLMsCoach(nn.Module):
                     completed = self.get_rewards(obj_diff, cur_task)
                     need_new_task.append(completed or self._task_num_try[idx] == 0)
                     rewards.append(completed)
+                    if completed:
+                        if cur_task not in self.task_cnt:
+                            self.task_cnt[cur_task] = 1
+                        else:
+                            self.task_cnt[cur_task] += 1
+                            
+            if np.random.rand() < 0.001:
+                print("completed task name: ", self.task_cnt)
         
         if False: #all(need_new_task):
         
@@ -360,7 +370,7 @@ class LLMsCoach(nn.Module):
                 if need_new_task[idx]:
                     task_response = info["next_task"]
                     self._last_task[idx] = task_response
-                    self._task_num_try[idx] = 4
+                    self._task_num_try[idx] = 1
         
         # update last state
         for idx, info in enumerate(infos):

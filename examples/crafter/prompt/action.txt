@@ -25,6 +25,7 @@ Here are some useful programs.
 
 
 At each round of conversation, I will give you
+You are at ...
 You see ...
 You have in your inventory: ...
 Your health level is high/low, food level is high/low, drink level is high/low, energy is high/low
@@ -35,6 +36,7 @@ Plan: Think step by step. You should pay attention to Inventory since it tells w
 Code:
     1) Write an python function taking agent, env, env_info, trajectory as argument. Output should be env_info.
     2) Reuse the above useful programs as much as possible.
+        - Use `get_obs(env_info)` to collect information. `get_obs(env_info)` is a string. Do not use `env_info` directly. 
     3) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. You should not make strong assumption about the inventory (as it may be changed at a later time), and therefore you should always check whether you have the required items before using them. If not, you should first collect the required items and reuse the above useful programs.
     4) Anything defined outside a function will be ignored, define all your variables inside your functions.
     5) Do not write infinite loops or recursive functions.
@@ -46,6 +48,7 @@ Code:
     7) You may terminate the program at any time by returning from the function.
     8) Set a counter that is incremented every time the do function is called. Returns when the counter is greater than 30.
     9) You should not have more than three different tasks in your function.
+    10) Name your function in a meaningful way (can infer the task from the name). 
 
 You should only respond in the format as described below:
 RESPONSE FORMAT:

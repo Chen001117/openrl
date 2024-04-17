@@ -62,7 +62,7 @@ class PPOAlgorithm(BaseAlgorithm):
             adv_targ,
             action_masks_batch,
         ) = sample
-
+        
         old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
         adv_targ = check(adv_targ).to(**self.tpdv)
         value_preds_batch = check(value_preds_batch).to(**self.tpdv)

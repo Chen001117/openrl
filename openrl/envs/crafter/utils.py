@@ -25,12 +25,12 @@ def postprocess(response):
     
     prefix = load_text("function/prefix.txt")
     
-    code = prefix + code
+    all_code = prefix + code
     
     with open("function/func.py", "w") as text_file:
-        text_file.write(code)
+        text_file.write(all_code)
         
-    return name
+    return name, code
 
 def import_class_from_file(file_path, function_name):
     spec = importlib.util.spec_from_file_location("module.name", file_path)

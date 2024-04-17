@@ -12,43 +12,64 @@ def save_img(obs, task):
 
 def do(language, agent, env, info, trajectory):
     current_task = language
-    action, _ = agent.act(info[0], deterministic=True)
-    obs, r, done, info = env.step(action, given_task=[current_task])
+    obs = env.set_task(info[0], [current_task]) 
+    action, _ = agent.act(obs, info=info[-1], deterministic=True)
+    obs, r, done, info = env.step(action)
     img = save_img(obs, current_task)
-    trajectory.append(img)
+    trajectory["img"].append(img)
     if all(done):
-        trajectory[0].save(
+        trajectory["img"][0].save(
             "run_results/crafter.gif", 
-            save_all=True, 
-            append_images=trajectory[1:], 
-            duration=100, 
+            save_all=True,
+            append_images=trajectory["img"][1:],
+            duration=100,
             loop=0
         )
+        trajectory["text"].append("You are dead.")
+        all_text = "\n".join(trajectory["text"])
+        with open("run_results/text.txt", "w") as f:
+            f.write(all_text)
         exit()
     return (obs, r, done, info)
 
-def get_obs(info):
-    return info[-1][0]
-def survival_prep(agent, env, env_info, trajectory):
+def get_obs(env_info):
+    return env_info[-1][0]
+
+def survive_and_defend(agent, env, env_info, trajectory):
     loop_counter = 0
-    inventory_obs = get_obs(env_info)
-    
-    # Chop trees until wood is obtained or the loop counter reaches 30.
-    while "wood" not in inventory_obs and loop_counter < 30:
-        env_info = do("Chop trees.", agent, env, env_info, trajectory)
-        inventory_obs = get_obs(env_info)
+
+    # Replenish drink level
+    while "drink level is high" not in get_obs(env_info) and loop_counter < 30:
+        do("Find water.", agent, env, env_info, trajectory)
+        do("Drink water.", agent, env, env_info, trajectory)
         loop_counter += 1
         if loop_counter >= 30:
             return env_info
-    
-    # Craft a wood pickaxe if there is wood in the inventory.
-    if "wood" in inventory_obs:
-        env_info = do("Craft wood_pickaxe.", agent, env, env_info, trajectory)
-        loop_counter += 1
 
-    # Craft a wood sword if there is wood in the inventory.
-    if "wood" in inventory_obs and loop_counter < 30:
-        env_info = do("Craft wood_sword.", agent, env, env_info, trajectory)
+    # Restore energy
+    while "energy is high" not in get_obs(env_info) and loop_counter < 30:
+        do("Sleep.", agent, env, env_info, trajectory)
         loop_counter += 1
+        if loop_counter >= 30:
+            return env_info
+
+    # Defend against threats
+    if "zombie" in get_obs(env_info):
+        while "zombie" in get_obs(env_info) and loop_counter < 30:
+            do("Kill the zombie.", agent, env, env_info, trajectory)
+            loop_counter += 1
+            if loop_counter >= 30:
+                return env_info
+
+    if "skeleton" in get_obs(env_info):
+        while "skeleton" in get_obs(env_info) and loop_counter < 30:
+            do("Kill the skeleton.", agent, env, env_info, trajectory)
+            loop_counter += 1
+            if loop_counter >= 30:
+                return env_info
+
+    # At this point, further actions could vary depending on the situation
+    # For example, we might want to craft better tools or mine resources
+    # But these would be beyond the scope of this immediate survival plan
 
     return env_info

@@ -80,11 +80,12 @@ def render():
     # config
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
+    cfg.seed = 42
 
     # init the agent
     agent = Agent(Net(env, cfg=cfg))
     agent.set_env(env)
-    agent.load("models/crafter_agent-10M-3/")
+    agent.load("models/crafter_agent-10M-28/")
 
     # GPT client
     from openrl.envs.crafter.gpt_client import GPTClient
@@ -101,7 +102,7 @@ def render():
     )
 
     # begin to test
-    trajectory = []
+    trajectory = {"img" : [], "text" : []}
     obs, infos = env.reset()
 
     step = 0
@@ -122,15 +123,17 @@ def render():
         
         response = llm([system_message, human_message]).content
         
+        # response = test
         print(response)
-        
         print("="*60)
         
-        func_name = postprocess(response)
+        func_name, code = postprocess(response)
+        
+        trajectory["text"].append(env_info[-1][0]["text_obs"])
+        trajectory["text"].append("Then the agent run the following code:\n```python\n" + code + "\n```\n")
         
         CrafterAgent = import_class_from_file("function/func.py", func_name)
         env_info = CrafterAgent(agent, env, env_info, trajectory)
-        
 
 if __name__ == "__main__":
     render()
