@@ -115,7 +115,7 @@ def render(seed, tasks, cnts, model_name):
 
 if __name__ == "__main__":
     
-    model = "models/crafter_agent-2M-27/"
+    model = "models/crafter_agent-2M-29/"
     print("model", model)
     
     traj_diff = []

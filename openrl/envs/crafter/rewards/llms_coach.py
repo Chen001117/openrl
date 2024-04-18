@@ -88,7 +88,7 @@ class LLMsCoach(nn.Module):
         update_task_freq: int,
     ):
         super().__init__()
-        self.n_env = 128
+        self.n_env = 32
         
         # self._client = GPTClient(api_key, api_base, model)
         # api_key = "EMPTY"
