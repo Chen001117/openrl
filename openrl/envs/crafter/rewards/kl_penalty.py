@@ -22,6 +22,8 @@ class KLPenalty(nn.Module):
         env: Env,
         cfg: Any,
         base_model: Optional[str] = None,
+        target_kl: Optional[float] = 0.5,
+        init_alpha: Optional[float] = 0.,
     ):
         super().__init__()
 
@@ -58,29 +60,25 @@ class KLPenalty(nn.Module):
             raise NotImplementedError("KL penalty only support cuda")
         else:
             self._ref_net = torch.load(path)
-        
-        # module = torch.load(path)
-        # self._ref_net.models["policy"].base = module.models["policy"].base
-        # self._ref_net.models["policy"].rnn = module.models["policy"].rnn
-        # self._ref_net.models["policy"].act = module.models["policy"].act
-        # self._ref_net.models["policy"].out_layer = module.models["policy"].base.out_layer
+            self._ref_net.models["policy"].base.set_isbase()
         
         for key in self._ref_net.models:
             self._ref_net.models[key] = self._ref_net.models[key].eval()
         
-        self._alpha = 0.05
-        self._target_kl = 0.2
-        self._update_rate = 0.1
+        self._alpha = init_alpha
+        self._init_alpha = init_alpha
+        self._target_kl = target_kl
+        self._update_rate = 0.3
         self._clip_coef = 0.2
-        self._kl_length = 64
+        self._kl_length = 16
         self._kl_data = []
-        
-        self._action_dist = CategoricalDistribution(env.action_space.n)
+        self._action_dist = CategoricalDistribution(env.action_space[0].n)
 
     def update_alpha(self, kl_div: float) -> None:
         diff_to_target = (kl_div - self._target_kl) / self._target_kl
         e_t = np.clip(diff_to_target, -self._clip_coef, self._clip_coef)
         self._alpha = self._alpha * (1 + self._update_rate * e_t)
+        self._alpha = max(self._init_alpha, self._alpha)
         # print("update alpha: ", self._alpha, "KL", kl_div)
         
     def __call__(
@@ -90,10 +88,11 @@ class KLPenalty(nn.Module):
         obs = data["buffer"].data.get_batch_data("policy_obs", step)
         rnn_states = data["buffer"].data.get_batch_data("rnn_states", step)
         masks = data["buffer"].data.get_batch_data("masks", step)
-        actions = data["actions"]
-        action_log_probs = data["action_log_probs"]
+        actions = data["actions"][:,:,:1]
+        action_log_probs = data["action_log_probs"][:,:,:1]
+        action_masks = data["buffer"].data.get_batch_data("action_masks", step)
 
-        actions = torch.tensor(actions).flatten()
+        actions = torch.tensor(actions).squeeze(-1)
         for key in self._ref_net.models:
             self._ref_net.models[key] = self._ref_net.models[key].eval()
         
@@ -104,6 +103,8 @@ class KLPenalty(nn.Module):
                 rnn_states,
                 actions,
                 masks,
+                action_masks,
+                ref=True
             )
 
         ref_log_prob = ref_log_prob.reshape(action_log_probs.shape)

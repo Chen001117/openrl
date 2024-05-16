@@ -24,7 +24,7 @@ class ACTLayer(nn.Module):
             self.action_out = Bernoulli(inputs_dim, action_dim, use_orthogonal, gain)
         elif action_space.__class__.__name__ == "MultiDiscrete":
             self.multidiscrete_action = True
-            action_dims = action_space.high - action_space.low + 1
+            action_dims = action_space.nvec #action_space.high - action_space.low + 1
             self.action_outs = []
             for action_dim in action_dims:
                 self.action_outs.append(
@@ -42,7 +42,7 @@ class ACTLayer(nn.Module):
                 ]
             )
 
-    def forward(self, x, action_masks=None, deterministic=False):
+    def forward(self, x, action_masks=None, deterministic=False, alpha=1.0):
         if self.mixed_action:
             actions = []
             action_log_probs = []
@@ -77,7 +77,7 @@ class ACTLayer(nn.Module):
             action_log_probs = action_logits.log_probs(actions)
 
         else:
-            action_logits = self.action_out(x, action_masks)
+            action_logits = self.action_out(x, action_masks, alpha)
             actions = action_logits.mode() if deterministic else action_logits.sample()
             action_log_probs = action_logits.log_probs(actions)
         return actions, action_log_probs
@@ -100,7 +100,7 @@ class ACTLayer(nn.Module):
         return action_probs
 
     def evaluate_actions(
-        self, x, action, action_masks=None, active_masks=None, get_probs=False
+        self, x, action, action_masks=None, active_masks=None, get_probs=False, alpha=1.
     ):
         if self.mixed_action:
             a, b = action.split((2, 1), -1)
@@ -158,7 +158,7 @@ class ACTLayer(nn.Module):
                 dist_entropy = act_entropy.mean()
 
         else:
-            action_logits = self.action_out(x, action_masks)
+            action_logits = self.action_out(x, action_masks, alpha)
             action_log_probs = action_logits.log_probs(action)
             if active_masks is not None:
                 dist_entropy = (

@@ -1,10 +1,13 @@
 seed: 2
 lr: 7e-4
 critic_lr: 7e-4
-episode_length: 128
-ppo_epoch: 4
-num_mini_batch: 4
-gae_lambda: 0.8
+episode_length: 512
+ppo_epoch: 5
+num_mini_batch: 8
+gamma: 0.8
+ex_gamma: 0.99
+gae_lambda: 0.95
+alpha_value: 0.01
 run_dir: ./run_results/
 experiment_name: train_crafter
 log_interval: 1
@@ -12,16 +15,15 @@ use_recurrent_policy: true
 use_joint_action_loss: false
 use_valuenorm: true
 use_adv_normalize: true
+use_linear_lr_decay: true
 wandb_entity: cwz19
 
 reward_class:
   id: "CrafterReward"
   args: {
-    "api_key": "EMPTY", #"isQQQqPJUUSWXvz4NqG36Q6v5pxdPTkG",
-    "api_base": "http://localhost:11017/v1", # "https://azure-openai-api.shenmishajing.workers.dev/v1", 
-    "model": "mistralai/Mistral-7B-Instruct-v0.2", # "berkeley-nest/Starling-LM-7B-alpha", #"meta-llama/Llama-2-70b-chat-hf" #"gpt-4-32k",
-    "base_model": "/zfsauton2/home/wentsec/openrl/examples/crafter/models/crafter_agent-100M-3",
-    "update_task_freq": 1,
+    "base_model": "/zfsauton2/home/wentsec/openrl/examples/crafter/models/crafter_agent-2M-05",
+    "target_kl": 0.2,
+    "init_alpha": 0.01
   }
 vec_info_class:
   id: "CrafterVecInfo"

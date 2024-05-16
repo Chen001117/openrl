@@ -35,12 +35,13 @@ def train():
     net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
     agent = Agent(net, use_wandb=True)
-    agent.load("models/crafter_agent-100M-3/")
+    agent.load("models/crafter_agent-2M-05/")
     # start training
     agent.train(total_time_steps=2000000)
     # save the trained model
-    agent.save("models/crafter_agent-2M-30/")
-    print("save model to models/crafter_agent-2M-30")
+    name = "models/crafter_agent-2M-10/"
+    agent.save(name)
+    print("save model to " + name)
     # close the environment
     env.close()
     return agent

@@ -123,9 +123,9 @@ def render():
     # GPT client
     from openrl.envs.crafter.gpt_client import GPTClient
     import asyncio
-    api_key = "isQQQqPJUUSWXvz4NqG36Q6v5pxdPTkG" #"EMPTY" 
-    api_base = "https://azure-openai-api.shenmishajing.workers.dev/v1" #"http://localhost:11016/v1"  
-    model = "gpt-4-32k" #"mistralai/Mistral-7B-Instruct-v0.2" 
+    api_key = "EMPTY" 
+    api_base = "http://localhost:11016/v1"  
+    model = "mistralai/Mistral-7B-Instruct-v0.2" 
 
     # gpt client
     llm = ChatOpenAI(

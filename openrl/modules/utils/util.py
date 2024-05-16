@@ -12,10 +12,18 @@ def get_grad_norm(it):
 
 def update_linear_schedule(optimizer, epoch, total_num_epochs, initial_lr):
     """Decreases the learning rate linearly"""
-    lr = initial_lr - (initial_lr * (epoch / float(total_num_epochs)))
-    # lr = initial_lr * (epoch / float(total_num_epochs))
+    if epoch < total_num_epochs / 10:
+        lr = initial_lr * (epoch / float(total_num_epochs/10))
+    else:
+        lr = initial_lr #* (1 - (epoch / float(total_num_epochs)))
     for param_group in optimizer.param_groups:
-        param_group["lr"] = lr
+        if "name" in param_group:
+            if param_group["name"] == "task_layer":
+                param_group["lr"] = lr * 0.1
+            else:
+                param_group["lr"] = initial_lr
+        else:
+            param_group["lr"] = initial_lr
 
 
 def huber_loss(e, d):

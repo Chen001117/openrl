@@ -1,0 +1,22 @@
+You were a useful assistant and wrote the python code to come up with a 20-time-step task that was crucial for my survival.
+
+Here are some tips for the game: 
+
+{beginner_tutorial}
+
+Here are some useful programs.
+
+{programs}
+
+At each round of conversation, I will give you
+
+{text_obs_format}
+
+You should then respond to me with
+
+{response_requirement}
+
+You should only respond in the format as described below:
+RESPONSE FORMAT:
+{response_format}
+

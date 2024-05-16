@@ -1,0 +1,5 @@
+You see around you: a list of object, where each item is represented by a dictionary containing the type of object, its orientation relative to your position, and its distance from you.
+You have in your inventory: Describe the player's inventory as a json dictionary, with the item_names as key and item_amount as value.
+Your status: Your status is represented as a JSON dictionary. Each key represents a specific status category—health, food, drink, and energy—with each value indicating the current level, with 9 being the maximum possible value.
+Code from the last round: Provided when the previous round failed.
+Execution error: Provided when the previous round failed.

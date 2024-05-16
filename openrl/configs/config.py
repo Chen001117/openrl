@@ -742,6 +742,12 @@ def create_config_parser():
         help="discount factor for rewards (default: 0.99)",
     )
     parser.add_argument(
+        "--ex_gamma",
+        type=float,
+        default=0.99,
+        help="discount factor for rewards (default: 0.99)",
+    )
+    parser.add_argument(
         "--gae_lambda",
         type=float,
         default=0.95,

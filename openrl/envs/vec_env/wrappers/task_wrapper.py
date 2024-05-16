@@ -45,6 +45,33 @@ class TaskWrapper(VecEnvWrapper):
             )
     
         self.encoder = BertEncoder()
+        
+        self.available_actions = [
+            # "Find cows.", 
+            # "Find water.", 
+            # "Find stone.", 
+            # "Find tree.",
+            "Collect sapling.",
+            "Place sapling.",
+            "Chop tree.", 
+            "Kill the cow.", 
+            "Mine stone.", 
+            "Drink water.",
+            "Mine coal.", 
+            "Mine iron.", 
+            "Mine diamond.", 
+            "Kill the zombie.",
+            "Kill the skeleton.", 
+            "Craft wood_pickaxe.", 
+            "Craft wood_sword.",
+            "Place crafting table.", 
+            "Place furnace.", 
+            "Craft stone_pickaxe.",
+            "Craft stone_sword.", 
+            "Craft iron_pickaxe.", 
+            "Craft iron_sword.",
+            "Sleep."
+        ]
 
     def reset(
             self, 
@@ -53,7 +80,7 @@ class TaskWrapper(VecEnvWrapper):
         
         obs, info = self.env.reset(**kwargs)
         task = ["Survive."] * len(obs["policy"])
-        task_emb = self.encoder.encode(task)
+        task_emb = self.encoder(task)
         task_emb = np.expand_dims(task_emb, axis=1)
         
         obs["policy"] = {
@@ -69,20 +96,20 @@ class TaskWrapper(VecEnvWrapper):
     
     def step(
         self, 
-        action: ActType, 
+        actions: ActType, 
         extra_data: Optional[Dict[str, Any]] = None,
         *args, 
         **kwargs,
     ) -> Union[Any, np.ndarray, np.ndarray, List[Dict[str, Any]]]:
         
-        obs, rewards, dones, infos = self.env.step(action, extra_data, *args, **kwargs)
+        obs, rewards, dones, infos = self.env.step(actions, extra_data, *args, **kwargs)
         
         if extra_data is None:
             obs["policy"] = {"image": obs["policy"]}
             obs["critic"] = {"image": obs["critic"]}
         else:
-            task = self.get_tasks(infos)
-            task_emb = self.encoder.encode(task)
+            task = self.get_tasks(infos, actions)
+            task_emb = self.encoder(task)
             task_emb = np.expand_dims(task_emb, axis=1)
         
             obs["policy"] = {
@@ -112,11 +139,11 @@ class TaskWrapper(VecEnvWrapper):
         
         return obs
 
-    def get_tasks(self, infos):
+    def get_tasks(self, infos, actions):
         
         tasks = []
-        for info in infos:
-            tasks.append(info["task"])
+        for info, action in zip(infos, actions):
+            tasks.append(self.available_actions[action[0,1]])
         return tasks
     
     @property

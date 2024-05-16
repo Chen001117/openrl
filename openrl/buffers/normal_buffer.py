@@ -68,8 +68,8 @@ class NormalReplayBuffer(object):
     def after_update(self):
         self.data.after_update()
 
-    def compute_returns(self, next_value, value_normalizer=None):
-        self.data.compute_returns(next_value, value_normalizer)
+    def compute_returns(self, next_value, value_normalizer=None, ex_value_normalizer=None):
+        self.data.compute_returns(next_value, value_normalizer, ex_value_normalizer)
 
     def feed_forward_generator(
         self,

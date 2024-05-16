@@ -20,6 +20,7 @@ from typing import Union
 
 import numpy as np
 import torch
+import json
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
 
@@ -42,6 +43,27 @@ class PPOAlgorithm(BaseAlgorithm):
         super(PPOAlgorithm, self).__init__(cfg, init_module, agent_num, device)
         self.train_list = [self.train_ppo]
         self.use_deepspeed = cfg.use_deepspeed
+
+        self.bc_term = False
+        if self.bc_term:
+            # load data
+            self.buffer_size = 100
+            self.expert_obs = [{
+                "image": [],
+                "task_emb": [],
+            } for _ in range(self.buffer_size)]
+            self.expert_act = [[] for _ in range(self.buffer_size)]
+            for i in range(self.buffer_size):
+                name = "run_results/buffer/result_{:02d}.json".format(i)
+                data = json.load(open(name))
+                self.expert_obs[i]["image"] = np.array(data["image"])[:,0,0]
+                self.expert_obs[i]["task_emb"] = np.array(data["task_emb"])[:,0,0]
+                self.expert_act[i] = np.array(data["actions"])
+                self.expert_act[i] = check(self.expert_act[i]).to(**self.tpdv)
+                if len(self.expert_act[i]) % 2 == 1:
+                    self.expert_act[i] = self.expert_act[i][:-1]
+                    self.expert_obs[i]["image"] = self.expert_obs[i]["image"][:-1]
+                    self.expert_obs[i]["task_emb"] = self.expert_obs[i]["task_emb"][:-1]
 
     def ppo_update(self, sample, turn_on=True):
         for optimizer in self.algo_module.optimizers.values():
@@ -77,6 +99,7 @@ class PPOAlgorithm(BaseAlgorithm):
                     policy_loss,
                     dist_entropy,
                     ratio,
+                    task_entropy
                 ) = self.prepare_loss(
                     critic_obs_batch,
                     obs_batch,
@@ -95,7 +118,7 @@ class PPOAlgorithm(BaseAlgorithm):
             for loss in loss_list:
                 self.algo_module.scaler.scale(loss).backward()
         else:
-            loss_list, value_loss, policy_loss, dist_entropy, ratio = self.prepare_loss(
+            loss_list, in_value_loss, ex_value_loss, policy_loss, dist_entropy, ratio, task_entropy = self.prepare_loss(
                 critic_obs_batch,
                 obs_batch,
                 rnn_states_batch,
@@ -167,17 +190,20 @@ class PPOAlgorithm(BaseAlgorithm):
             torch.cuda.synchronize()
 
         return (
-            value_loss,
+            in_value_loss,
+            ex_value_loss,
             critic_grad_norm,
             policy_loss,
             dist_entropy,
             actor_grad_norm,
             ratio,
+            task_entropy
         )
 
     def cal_value_loss(
         self,
-        value_normalizer,
+        in_value_normalizer,
+        ex_value_normalizer,
         values,
         value_preds_batch,
         return_batch,
@@ -187,12 +213,17 @@ class PPOAlgorithm(BaseAlgorithm):
             -self.clip_param, self.clip_param
         )
 
-        if (self._use_popart or self._use_valuenorm) and value_normalizer is not None:
-            value_normalizer.update(return_batch)
+        if (self._use_popart or self._use_valuenorm) and in_value_normalizer is not None:
+            in_value_normalizer.update(return_batch[:,:1])
+            ex_value_normalizer.update(return_batch[:,1:]) #
+            norm_return_batch = torch.cat([
+                in_value_normalizer.normalize(return_batch[:,:1]), 
+                ex_value_normalizer.normalize(return_batch[:,1:])
+            ], dim=-1)
             error_clipped = (
-                value_normalizer.normalize(return_batch) - value_pred_clipped
+                norm_return_batch - value_pred_clipped
             )
-            error_original = value_normalizer.normalize(return_batch) - values
+            error_original = norm_return_batch - values
         else:
             error_clipped = return_batch - value_pred_clipped
             error_original = return_batch - values
@@ -210,14 +241,13 @@ class PPOAlgorithm(BaseAlgorithm):
             value_loss = value_loss_original
 
         if self._use_value_active_masks:
-            value_loss = (
-                value_loss * active_masks_batch
-            ).sum() / active_masks_batch.sum()
+            in_val_loss = (value_loss[:,:1] * active_masks_batch).sum() / active_masks_batch.sum()
+            ex_val_loss = (value_loss[:,1:] * active_masks_batch).sum() / active_masks_batch.sum()
         else:
             value_loss = value_loss.mean()
         # print(value_loss)
         # import pdb;pdb.set_trace()
-        return value_loss
+        return in_val_loss, ex_val_loss
 
     def to_single_np(self, input):
         reshape_input = input.reshape(-1, self.agent_num, *input.shape[1:])
@@ -268,6 +298,7 @@ class PPOAlgorithm(BaseAlgorithm):
             action_log_probs,
             dist_entropy,
             policy_values,
+            task_entropy,
         ) = self.algo_module.evaluate_actions(
             critic_obs_batch,
             obs_batch,
@@ -278,7 +309,41 @@ class PPOAlgorithm(BaseAlgorithm):
             action_masks_batch,
             active_masks_batch,
             critic_masks_batch=critic_masks_batch,
+            return_task_entropy=True
         )
+        
+        if self.bc_term:
+            expert_idx = np.random.randint(self.buffer_size)
+            expert_rnn_states_actor = np.zeros([1,2,64])
+            expert_rnn_states_actor = check(expert_rnn_states_actor).to(**self.tpdv)
+            expert_masks = np.ones([1, 1])
+            expert_action_masks = np.ones([1, 39])
+            expert_rnn = []
+            for i in range(len(self.expert_act[expert_idx])):
+                if i%2 == 0:
+                    expert_rnn.append(expert_rnn_states_actor)
+                _, _, expert_rnn_states_actor = self.algo_module.models["policy"](
+                    "original",
+                    {
+                        "image" : self.expert_obs[expert_idx]["image"][i:i+1],
+                        "task_emb" : self.expert_obs[expert_idx]["task_emb"][i:i+1],
+                    }, # 1, 3, 64, 64; 1, 1, 384
+                    expert_rnn_states_actor, # 1, 2, 64
+                    expert_masks, # 1, 1
+                    expert_action_masks, # 1, 39
+                    deterministic=False, # False
+                )
+
+            expert_rnn_states_actor = torch.stack(expert_rnn, 0) 
+            expert_masks = np.ones([len(self.expert_act[expert_idx]), 1])
+            expert_actions = torch.stack([self.expert_act[expert_idx]*0, self.expert_act[expert_idx]], -1)
+            bc_action_log_probs, _, _ = self.algo_module.models["policy"](
+                "eval_actions",
+                self.expert_obs[expert_idx],
+                expert_rnn_states_actor[:,0],
+                expert_actions,
+                expert_masks,
+            )
 
         if self.use_joint_action_loss:
             action_log_probs_copy = (
@@ -300,6 +365,8 @@ class PPOAlgorithm(BaseAlgorithm):
             ratio = torch.exp(action_log_probs_copy - old_action_log_probs_batch_copy)
         else:
             ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
+            ratio = ratio[:,:1] # update actor only!
+            adv_targ = adv_targ[:,:1]
 
         if self.dual_clip_ppo:
             ratio = torch.min(ratio, self.dual_clip_coeff)
@@ -340,15 +407,20 @@ class PPOAlgorithm(BaseAlgorithm):
         else:
             policy_loss = policy_action_loss
 
+        if self.bc_term:
+            policy_loss = policy_loss - bc_action_log_probs[:,1:].mean() * .001
+
         # critic update
         if self._use_share_model:
             value_normalizer = self.algo_module.models["model"].value_normalizer
         elif isinstance(self.algo_module.models["critic"], DistributedDataParallel):
             value_normalizer = self.algo_module.models["critic"].module.value_normalizer
         else:
-            value_normalizer = self.algo_module.get_critic_value_normalizer()
-        value_loss = self.cal_value_loss(
-            value_normalizer,
+            in_value_normalizer = self.algo_module.get_critic_value_normalizer()
+            ex_value_normalizer = self.algo_module.get_ex_critic_value_normalizer()
+        in_value_loss, ex_value_loss = self.cal_value_loss(
+            in_value_normalizer,
+            ex_value_normalizer,
             values,
             value_preds_batch,
             return_batch,
@@ -356,9 +428,9 @@ class PPOAlgorithm(BaseAlgorithm):
         )
 
         loss_list = self.construct_loss_list(
-            policy_loss, dist_entropy, value_loss, turn_on
+            policy_loss, dist_entropy, in_value_loss+ex_value_loss*0., turn_on #
         )
-        return loss_list, value_loss, policy_loss, dist_entropy, ratio
+        return loss_list, in_value_loss, ex_value_loss, policy_loss, dist_entropy, ratio, task_entropy
 
     def get_data_generator(self, buffer, advantages):
         if self._use_recurrent_policy:
@@ -389,31 +461,46 @@ class PPOAlgorithm(BaseAlgorithm):
                     "critic"
                 ].module.value_normalizer
             else:
-                value_normalizer = self.algo_module.get_critic_value_normalizer()
-            if value_normalizer is not None:
-                advantages = buffer.returns[:-1] - value_normalizer.denormalize(
-                    buffer.value_preds[:-1]
-                )
+                in_value_normalizer = self.algo_module.get_critic_value_normalizer()
+                ex_value_normalizer = self.algo_module.get_ex_critic_value_normalizer()
+            if in_value_normalizer is not None:
+                in_val = in_value_normalizer.denormalize(buffer.value_preds[:-1,:,:,:1])
+                in_adv = buffer.returns[:-1,:,:,:1] - in_val
+                ex_val = ex_value_normalizer.denormalize(buffer.value_preds[:-1,:,:,1:])
+                ex_adv = buffer.returns[:-1,:,:,1:] - ex_val
+                advantages = np.concatenate([in_adv, ex_adv], axis=-1)
             else:
                 advantages = buffer.returns[:-1] - buffer.value_preds[:-1]
         else:
             advantages = buffer.returns[:-1] - buffer.value_preds[:-1]
 
-        if self._use_adv_normalize:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+        # TODO: seems like normalize two times
+        # if self._use_adv_normalize:
+        #     in_adv = advantages[:,:,:,:1] 
+        #     advantages[:,:,:,:1] = (in_adv - in_adv.mean()) / (in_adv.std() + 1e-5)
+        #     out_adv = advantages[:,:,:,1:]
+        #     advantages[:,:,:,1:] = (out_adv - out_adv.mean()) / (out_adv.std() + 1e-5)
 
-        advantages_copy = advantages.copy()
-        advantages_copy[buffer.active_masks[:-1] == 0.0] = np.nan
-        mean_advantages = np.nanmean(advantages_copy)
-        std_advantages = np.nanstd(advantages_copy)
-        advantages = (advantages - mean_advantages) / (std_advantages + 1e-5)
+        in_advantages_copy = advantages[:,:,:,:1].copy()
+        in_advantages_copy[buffer.active_masks[:-1] == 0.0] = np.nan
+        mean_advantages = np.nanmean(in_advantages_copy)
+        std_advantages = np.nanstd(in_advantages_copy)
+        advantages[:,:,:,:1] = (in_advantages_copy - mean_advantages) / (std_advantages + 1e-5)
+        
+        ex_advantages_copy = advantages[:,:,:,1:].copy()
+        ex_advantages_copy[buffer.active_masks[:-1] == 0.0] = np.nan
+        mean_advantages = np.nanmean(ex_advantages_copy)
+        std_advantages = np.nanstd(ex_advantages_copy)
+        advantages[:,:,:,1:] = (ex_advantages_copy - mean_advantages) / (std_advantages + 1e-5)
 
         train_info = {}
 
         train_info["value_loss"] = 0
+        train_info["ex_value_loss"] = 0
         train_info["policy_loss"] = 0
 
         train_info["dist_entropy"] = 0
+        train_info["task_entropy"] = 0
         train_info["actor_grad_norm"] = 0
         train_info["critic_grad_norm"] = 0
         train_info["ratio"] = 0
@@ -426,12 +513,14 @@ class PPOAlgorithm(BaseAlgorithm):
 
             for sample in data_generator:
                 (
-                    value_loss,
+                    in_value_loss,
+                    ex_value_loss,
                     critic_grad_norm,
                     policy_loss,
                     dist_entropy,
                     actor_grad_norm,
                     ratio,
+                    task_entropy,
                 ) = self.ppo_update(sample, turn_on)
 
                 if self.world_size > 1:
@@ -442,10 +531,12 @@ class PPOAlgorithm(BaseAlgorithm):
                         policy_loss.data, self.world_size
                     )
 
-                train_info["value_loss"] += value_loss.item()
+                train_info["value_loss"] += in_value_loss.item()
+                train_info["ex_value_loss"] += ex_value_loss.item()
                 train_info["policy_loss"] += policy_loss.item()
 
                 train_info["dist_entropy"] += dist_entropy.item()
+                train_info["task_entropy"] += task_entropy.item()
                 train_info["actor_grad_norm"] += actor_grad_norm
                 train_info["critic_grad_norm"] += critic_grad_norm
                 train_info["ratio"] += ratio.mean().item()

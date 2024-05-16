@@ -133,7 +133,7 @@ class PPOModule(RLModule):
             )
 
             values, rnn_states_critic = self.models["critic"](
-                critic_obs, rnn_states_critic, masks
+                critic_obs, rnn_states_critic, masks, actions=actions
             )
         return values, actions, action_log_probs, rnn_states_actor, rnn_states_critic
 
@@ -143,7 +143,7 @@ class PPOModule(RLModule):
                 "get_values", critic_obs, rnn_states_critic, masks
             )
         else:
-            values, _ = self.models["critic"](critic_obs, rnn_states_critic, masks)
+            values, _ = self.models["critic"](critic_obs, rnn_states_critic, masks, get_value=True)
         return values
 
     def evaluate_actions(
@@ -157,6 +157,7 @@ class PPOModule(RLModule):
         action_masks=None,
         active_masks=None,
         critic_masks_batch=None,
+        return_task_entropy=False
     ):
         if critic_masks_batch is None:
             critic_masks_batch = masks
@@ -177,10 +178,11 @@ class PPOModule(RLModule):
             )
         else:
             values, _ = self.models["critic"](
-                critic_obs, rnn_states_critic, critic_masks_batch
+                critic_obs, rnn_states_critic, critic_masks_batch, action
             )
 
-            action_log_probs, dist_entropy, policy_values = self.models["policy"](
+            
+            result = self.models["policy"](
                 "eval_actions",
                 obs,
                 rnn_states_actor,
@@ -188,11 +190,17 @@ class PPOModule(RLModule):
                 masks,
                 action_masks,
                 active_masks,
+                return_task_entropy=return_task_entropy
             )
 
-        return values, action_log_probs, dist_entropy, policy_values
+        if return_task_entropy:
+            action_log_probs, dist_entropy, policy_values, task_entropy = result
+            return values, action_log_probs, dist_entropy, policy_values, task_entropy
+        else:
+            action_log_probs, dist_entropy, policy_values = result
+            return values, action_log_probs, dist_entropy, policy_values
 
-    def act(self, obs, rnn_states_actor, masks, action_masks=None, deterministic=False):
+    def act(self, obs, rnn_states_actor, masks, action_masks=None, deterministic=False, render=False):
         if self.share_model:
             model = self.models["model"]
         else:
@@ -205,6 +213,7 @@ class PPOModule(RLModule):
             masks,
             action_masks,
             deterministic,
+            render
         )
 
         return actions, rnn_states_actor
@@ -214,11 +223,17 @@ class PPOModule(RLModule):
             return self.models["model"].value_normalizer
         else:
             return self.models["critic"].value_normalizer
+        
+    def get_ex_critic_value_normalizer(self):
+        if self.share_model:
+            return self.models["model"].value_normalizer
+        else:
+            return self.models["critic"].ex_value_normalizer
 
     @staticmethod
     def init_rnn_states(
         rollout_num: int, agent_num: int, rnn_layers: int, hidden_size: int
     ):
         masks = np.ones((rollout_num * agent_num, 1), dtype=np.float32)
-        rnn_state = np.zeros((rollout_num * agent_num, rnn_layers, hidden_size))
+        rnn_state = np.zeros((rollout_num * agent_num, rnn_layers+1, hidden_size))
         return rnn_state, masks

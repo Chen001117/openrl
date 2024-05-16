@@ -58,7 +58,7 @@ def render():
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("models/crafter_agent-10M-32/")
+    agent.load("models/crafter_agent-10M-51/")
 
     # begin to test
     trajectory = []

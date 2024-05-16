@@ -24,6 +24,44 @@ from openrl.envs.wrappers import GIFWrapper
 from openrl.modules.common import PPONet as Net
 from openrl.runners.common import PPOAgent as Agent
 
+from PIL import Image, ImageDraw, ImageFont
+
+def save_img(obs, task):
+    img = obs["policy"]["image"][0, 0]
+    img = img.transpose((1, 2, 0))
+    img = Image.fromarray(img)
+    img = img.resize((256, 256))
+    draw = ImageDraw.Draw(img)
+    draw.text((10,10), task, fill=(255,0,0))
+    # img.save("run_results/image.png")
+    return img
+
+available_actions = [
+    # "Find cows.", 
+    # "Find water.", 
+    # "Find stone.", 
+    # "Find tree.",
+    "Collect sapling.",
+    "Place sapling.",
+    "Chop tree.", 
+    "Kill the cow.", 
+    "Mine stone.", 
+    "Drink water.",
+    "Mine coal.", 
+    "Mine iron.", 
+    "Mine diamond.", 
+    "Kill the zombie.",
+    "Kill the skeleton.", 
+    "Craft wood_pickaxe.", 
+    "Craft wood_sword.",
+    "Place crafting table.", 
+    "Place furnace.", 
+    "Craft stone_pickaxe.",
+    "Craft stone_sword.", 
+    "Craft iron_pickaxe.", 
+    "Craft iron_sword.",
+    "Sleep."
+]
 
 def render(seed):
     # begin to test
@@ -43,39 +81,43 @@ def render(seed):
     # set up the environment and initialize the RNN network.
     agent.set_env(env)
     # load the trained model
-    agent.load("models/crafter_agent-100M-2/")
+    agent.load("models/crafter_agent-10M-00/")
 
     # begin to test
-    trajectory = []
+    history_imgs = []
     obs, info = env.reset()
     step = 0
     total_reward = 0
     while True:
         
-        tasks = ["Chop tree.", "Mine stone.", "Kill the cow."]
-        current_task = tasks[np.random.randint(0, 3)]
-        obs = env.set_task(obs, [current_task])
+        # obs = env.set_task(obs, [current_task])
         
         # Based on environmental observation input, predict next action.
         action, _ = agent.act(obs, info=info, deterministic=True)
         obs, r, done, info = env.step(action)
+        current_task = available_actions[action[0,0,1]]
         step += 1
         total_reward += r
 
         if all(done):
             break
-
-        img = obs["policy"]["image"][0, 0]
-        img = img.transpose((1, 2, 0))
-        trajectory.append(img)
+        
+        history_imgs.append(save_img(obs, current_task))
         
     print("step", step, "total_reward", total_reward)
 
     # save the trajectory to gif
     import imageio
 
-    imageio.mimsave("run_results/crafter.gif", trajectory, duration=0.01)
-
+    name = "run_results/crafter.gif"
+    history_imgs[0].save(
+        name, 
+        save_all=True, 
+        append_images=history_imgs[1:], 
+        duration=100, 
+        loop=0
+    )
+        
     env.close()
     
     return total_reward
@@ -83,7 +125,7 @@ def render(seed):
 
 if __name__ == "__main__":
     rewards = []
-    for seed in range(100):
+    for seed in range(1):
         reward = render(seed)
         rewards.append(reward)
     print("rewards", np.mean(rewards))

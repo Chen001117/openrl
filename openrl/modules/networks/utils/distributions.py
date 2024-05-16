@@ -65,10 +65,11 @@ class Categorical(nn.Module):
 
         self.linear = init_(nn.Linear(num_inputs, num_outputs))
 
-    def forward(self, x, action_masks=None):
+    def forward(self, x, action_masks=None, alpha=1.0):
         x = self.linear(x)
         if action_masks is not None:
             x[action_masks == 0] = -6e4  # fp16
+        x = x / alpha
         return FixedCategorical(logits=x)
 
 

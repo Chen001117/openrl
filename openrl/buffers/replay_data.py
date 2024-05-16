@@ -59,11 +59,13 @@ class ReplayData(object):
             self.hidden_size = cfg.hidden_size
         self.recurrent_N = cfg.recurrent_N
         self.gamma = cfg.gamma
+        self.ex_gamma = cfg.ex_gamma
         self.gae_lambda = cfg.gae_lambda
         self._use_gae = cfg.use_gae
         self._use_popart = cfg.use_popart
         self._use_valuenorm = cfg.use_valuenorm
         self._use_proper_time_limits = cfg.use_proper_time_limits
+        self._alpha = cfg.alpha_value
 
         self._mixed_obs = False  # for mixed observation
 
@@ -132,7 +134,7 @@ class ReplayData(object):
                 self.episode_length + 1,
                 self.n_rollout_threads,
                 num_agents,
-                self.recurrent_N,
+                self.recurrent_N + 1, # ugly implementation: add a dimension for task selector
                 self.hidden_size,
             ),
             dtype=np.float32,
@@ -140,7 +142,7 @@ class ReplayData(object):
         self.rnn_states_critic = np.zeros_like(self.rnn_states)
 
         self.value_preds = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1),
+            (self.episode_length + 1, self.n_rollout_threads, num_agents, 2),
             dtype=np.float32,
         )
         self.returns = np.zeros_like(self.value_preds)
@@ -155,10 +157,23 @@ class ReplayData(object):
                 ),
                 dtype=np.float32,
             )
+        elif act_space.__class__.__name__ == "MultiDiscrete":
+            self.action_masks = np.ones(
+                (
+                    self.episode_length + 1,
+                    self.n_rollout_threads,
+                    num_agents,
+                    act_space.nvec.sum(),
+                ),
+                dtype=np.float32,
+            )
         else:
             self.action_masks = None
 
-        act_shape = get_shape_from_act_space(act_space)
+        if act_space.__class__.__name__ == "MultiDiscrete":
+            act_shape = len(act_space.nvec)
+        else:
+            act_shape = get_shape_from_act_space(act_space)
 
         self.actions = np.zeros(
             (self.episode_length, self.n_rollout_threads, num_agents, act_shape),
@@ -170,7 +185,7 @@ class ReplayData(object):
         )
 
         self.rewards = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, 1),
+            (self.episode_length, self.n_rollout_threads, num_agents, 2),
             dtype=np.float32,
         )
 
@@ -297,6 +312,16 @@ class ReplayData(object):
         if action_masks is not None and self.action_masks is not None:
             self.action_masks[0] = action_masks
 
+    def crafter_update(self):
+
+        if self._mixed_obs:
+            # This is an ugly implementation of matching task_t with img_t
+            self.critic_obs["task_emb"][:-1] = self.critic_obs["task_emb"][1:].copy()
+            self.policy_obs["task_emb"][:-1] = self.policy_obs["task_emb"][1:].copy()
+        else:
+            raise NotImplementedError
+
+
     def after_update(self):
         assert self.step == 0, "step:{} episode:{}".format(
             self.step, self.episode_length
@@ -317,7 +342,7 @@ class ReplayData(object):
         if self.action_masks is not None:
             self.action_masks[0] = self.action_masks[-1].copy()
 
-    def compute_returns(self, next_value, value_normalizer=None):
+    def compute_returns(self, next_value, in_value_normalizer=None, ex_value_normalizer=None):
         if self._use_proper_time_limits:
             if self._use_gae:
                 self.value_preds[-1] = next_value
@@ -383,23 +408,24 @@ class ReplayData(object):
             if self._use_gae:
                 self.value_preds[-1] = next_value
                 gae = 0
+                # for intrinsic_return
                 for step in reversed(range(self.rewards.shape[0])):
                     if (
                         self._use_popart or self._use_valuenorm
-                    ) and value_normalizer is not None:
+                    ) and in_value_normalizer is not None:
                         delta = (
-                            self.rewards[step]
+                            self.rewards[step,:,:,:1]
                             + self.gamma
-                            * value_normalizer.denormalize(self.value_preds[step + 1])
-                            * self.masks[step + 1]
-                            - value_normalizer.denormalize(self.value_preds[step])
+                            * in_value_normalizer.denormalize(self.value_preds[step + 1,:,:,:1])
+                            * self.masks[step+1]
+                            - in_value_normalizer.denormalize(self.value_preds[step,:,:,:1])
                         )
                         gae = (
                             delta
-                            + self.gamma * self.gae_lambda * self.masks[step + 1] * gae
+                            + self.gamma * self.gae_lambda * self.masks[step+1] * gae
                         )
-                        self.returns[step] = gae + value_normalizer.denormalize(
-                            self.value_preds[step]
+                        self.returns[step,:,:,:1] = gae + in_value_normalizer.denormalize(
+                            self.value_preds[step,:,:,:1]
                         )
                     else:
                         delta = (
@@ -414,6 +440,35 @@ class ReplayData(object):
                             + self.gamma * self.gae_lambda * self.masks[step + 1] * gae
                         )
                         self.returns[step] = gae + self.value_preds[step]
+                # for extrinsic return 
+                gae = 0
+                for step in reversed(range(self.rewards.shape[0])):
+                    if (
+                        self._use_popart or self._use_valuenorm
+                    ) and ex_value_normalizer is not None:
+                        
+                        # log_p will be included in next_value at t=T
+                        logp_tp1 = self.action_log_probs[step+1,:,:,1:] if step<self.rewards.shape[0]-1 else 0
+                        
+                        delta = (
+                            self.rewards[step,:,:,1:]
+                            + self.ex_gamma
+                            * (ex_value_normalizer.denormalize(self.value_preds[step+1,:,:,1:]) - logp_tp1 * self._alpha)
+                            * self.masks[step+1]
+                            - ex_value_normalizer.denormalize(self.value_preds[step,:,:,1:])
+                        )
+                        gae = (
+                            delta
+                            + self.ex_gamma * self.gae_lambda * self.masks[step+1] * (gae + logp_tp1 * self._alpha)
+                        )
+                        # delta = r + V' - Q
+                        # gae' = r' + V'' - Q'
+                        # gae = r + V' - Q + lambda (r' + V'' - Q') ==> Q' should be V'
+                        self.returns[step,:,:,1:] = gae + ex_value_normalizer.denormalize(
+                            self.value_preds[step,:,:,1:]
+                        )
+                    else:
+                        raise NotImplementedError
             else:
                 self.returns[-1] = next_value
                 for step in reversed(range(self.rewards.shape[0])):

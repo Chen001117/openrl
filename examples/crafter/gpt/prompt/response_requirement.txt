@@ -1,0 +1,25 @@
+Explain (if applicable): explain why additional context or rationale is necessary for the strategy implemented in the Python function. It clarifies why certain decisions were made in the code, especially if those choices depend on the game's conditions or previous errors in code execution. Explain your decision here to provide clarity on the strategy.
+Plan: Think step by step. You should pay attention to what you see and what you have in your inventory. For each subgoal, specify how the completion may be precisely quantified in at most one sentence.
+Code:
+    1) Write an python function taking env, agent, observation as argument. Output should be env, agent.
+    2) Name your function in a meaningful way (can infer the task from the name). 
+    3) Do not write infinite loops or recursive functions. Add `not env.need_reset` to every `while` loop.
+    4) Anything defined outside a function will be ignored, define all your variables inside your functions.
+    5) You should integrate every `do` function into a while loop:
+    ```python
+    while not env.need_reset:
+        # Include conditions related to what you observe, what's in your inventory, or your current state.
+        observation = agent.do(skill_name)
+    ```
+    6) Observation is a dictionary composed of three sections: surrounding, inventory, and inner state. Here's an example of such a dictionary:
+    ```python
+    {
+    'surrounding': [{'type': 'coal', 'direction': 'north', 'distance': 1.0}],
+    'inventory': {'plant': 0, 'wood': 0, 'stone': 0, 'coal': 0, 'iron': 0, 'diamond': 0, 'wood_pickaxe': 1, 'stone_pickaxe': 1, 'iron_pickaxe': 0, 'wood_sword': 1, 'stone_sword': 1, 'iron_sword': 0},
+    'inner': {'health': 7, 'food': 8, 'drink': 5, 'energy': 4}
+    }
+    ```
+    The `surrounding` list can include a variety of items, such as 'water', 'stone', 'tree', 'coal', 'iron', 'diamond', 'crafting_table', 'furnace', 'plant', 'cow', 'zombie', and 'skeleton', and its length may change. The maximum value for any state in `inventory` and `inner` sections is 9.
+    7) Do not print anything.
+    8) You may terminate the program at any time by returning from the function.
+    9) You should not have more than three different tasks in your function.

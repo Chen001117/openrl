@@ -63,7 +63,7 @@ class OnPolicyDriver(RLDriver):
         rollout_infos, continue_training = self.actor_rollout()
         if not continue_training:
             return False
-
+        self.buffer.data.crafter_update() # only for crafter TODO
         train_infos = self.learner_update()
         self.buffer.after_update()
 
@@ -230,7 +230,8 @@ class OnPolicyDriver(RLDriver):
             value_normalizer = self.trainer.algo_module.models["model"].value_normalizer
         else:
             value_normalizer = self.trainer.algo_module.get_critic_value_normalizer()
-        self.buffer.compute_returns(next_values, value_normalizer)
+            ex_value_normalizer = self.trainer.algo_module.get_ex_critic_value_normalizer()
+        self.buffer.compute_returns(next_values, value_normalizer, ex_value_normalizer)
 
     @torch.no_grad()
     def act(

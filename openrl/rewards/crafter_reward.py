@@ -13,17 +13,15 @@ class CrafterReward(BaseReward):
         self,
         env: Env,
         cfg: Any,
-        api_key: str,
-        api_base: str,
-        model: str,
         base_model: str,
-        update_task_freq: int,
+        target_kl: float,
+        init_alpha: float,
     ):
         self.inner_rew_funcs = dict()
         self.batch_rew_funcs = dict()
         self.step_rew_funcs = {
-            "lm_rewards": LLMsCoach(api_key, api_base, model, update_task_freq=update_task_freq),
-            "kl_pen": KLPenalty(env, cfg, base_model),
+            "lm_rewards": LLMsCoach(),
+            "kl_pen": KLPenalty(env, cfg, base_model, target_kl, init_alpha)
         }
 
     def step_reward(
@@ -41,6 +39,10 @@ class CrafterReward(BaseReward):
             else:
                 for i in range(len(infos)):
                     infos[i].update(new_info[i])
+        
+        # [instruction following rewards, extrinsic rewards]
+        rewards = np.concatenate([rewards, data["rewards"]], -1)
+        
         return rewards, infos
 
     def batch_rewards(self, buffer) -> Dict[str, Any]:

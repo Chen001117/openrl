@@ -16,6 +16,7 @@
 
 """"""
 
+import json
 import time
 
 import imageio
@@ -30,8 +31,7 @@ from openrl.runners.common import PPOAgent as Agent
 
 from PIL import Image, ImageDraw, ImageFont
 
-
-def save_img(obs, task, idx=0):
+def save_img(obs, task):
     img = obs["policy"]["image"][0, 0]
     img = img.transpose((1, 2, 0))
     img = Image.fromarray(img)
@@ -41,11 +41,13 @@ def save_img(obs, task, idx=0):
     # img.save("run_results/image.png")
     return img
 
-def render(seed, tasks, cnts, model_name):
+def render(seed, model_name, random):
 
     # config
     cfg_parser = create_config_parser()
     cfg = cfg_parser.parse_args()
+    model_name = cfg.model_dir
+    print("model", model_name)
     cfg.seed = seed
     
     # begin to test
@@ -59,170 +61,302 @@ def render(seed, tasks, cnts, model_name):
     agent = Agent(Net(env, cfg=cfg))
     agent.set_env(env)
     agent.load(model_name)
+    np.random.seed(seed)
 
     # begin to test
     obs, info = env.reset()
     
-    # set tasks
-    if tasks is None:
-        current_task = "Survive."
-        cnt_down = 1
-    else:
-        current_task = tasks[0]
-        cnt_down = cnts[0]
-    query_cnt = 1
-    cnt_down -= 1
-    
     # statistics 
-    traj = []
+    history_imgs = []
     env_step = 0
     total_reward = 0
+    original_rewards = 0
+    traj = {
+        "image":[],
+        "task_emb":[],
+        "actions":[],
+        "step":[],
+    }
     
-    all_task = ["Chop tree.", "Kill the cow.", "Mine stone.", "Drink water.", "Mine coal.", "Mine iron.", "Mine diamond.", "Kill the zombie.", "Kill the skeleton.", "Craft wood_pickaxe.", "Craft wood_sword.", "Place crafting table.", "Craft stone_pickaxe.", "Craft stone_sword.", "Craft iron_pickaxe.", "Craft iron_sword.", "Find cows.", "Find water.", "Sleep.", "Place furnace.", "Find tree.", "Find stone.", "Survive."]
+    all_task = [
+        # "Find cows.", 
+        # "Find water.", 
+        # "Find stone.", 
+        # "Find tree.",
+        "Collect sapling.",
+        "Place sapling.",
+        "Chop tree.", 
+        "Kill the cow.", 
+        "Mine stone.", 
+        "Drink water.",
+        "Mine coal.", 
+        "Mine iron.", 
+        "Mine diamond.", 
+        "Kill the zombie.",
+        "Kill the skeleton.", 
+        "Craft wood_pickaxe.", 
+        "Craft wood_sword.",
+        "Place crafting table.", 
+        "Place furnace.", 
+        "Craft stone_pickaxe.",
+        "Craft stone_sword.", 
+        "Craft iron_pickaxe.", 
+        "Craft iron_sword.",
+        "Sleep."
+    ]
+    
+    state = 0
+    cnt = 0
     
     while True:
         
-        obs = env.set_task(obs, [current_task]) # get correct observation
-        action, _ = agent.act(obs, info=info, deterministic=True)
-        extra_data = {"task": [current_task]} # get correct rewards
-        obs, r, done, info = env.step(action, extra_data=extra_data)
-        env_step += 1
-        if env_step < 150:
-            total_reward += r[0]
-        if env_step > 25 and env_step < 150:
-            traj.append(obs["policy"]["image"][0,0])
-        
-        if cnt_down == 0:
-            if tasks is None:
-                current_task = all_task[np.random.randint(len(all_task))]
-                cnt_down = 1 
-            else:
-                if query_cnt >= len(tasks):
-                    break
-                current_task = tasks[query_cnt] # all_task[np.random.randint(len(all_task))]
-                cnt_down = cnts[query_cnt]
-                query_cnt += 1
-        
-        cnt_down -= 1
+        if random:
+            if env_step == 0:
+                current_task = str(np.random.choice(all_task))
+            elif np.random.rand() < 0.1:
+                current_task = str(np.random.choice(all_task))
 
-        if all(done) or env_step >= 1279:
+        else:
+            
+            # get current text_obs
+            text_obs = info[0]["dict_obs"]
+            
+            near_zombie = False
+            for item in text_obs["surrounding"]:
+                if item["type"] == "zombie" and item["distance"] <= 3.5:
+                    near_zombie = True
+                    break
+            near_skeleton = False
+            for item in text_obs["surrounding"]:
+                if item["type"] == "skeleton" and item["distance"] <= 3.5:
+                    near_skeleton = True
+                    break
+            
+            food = text_obs["inner"]["food"]
+            drink = text_obs["inner"]["drink"]
+            energy = text_obs["inner"]["energy"]
+            
+            if near_zombie:
+                current_task = "Kill the zombie."
+            elif near_skeleton:
+                current_task = "Kill the skeleton."
+            
+            elif food <= drink and food <= energy and food <= 3:
+                current_task = "Kill the cow."
+            elif drink < food and drink <= energy and drink <= 3:
+                current_task = "Drink water."
+            elif energy < food and energy < drink and energy <= 3:
+                current_task = "Sleep."
+            
+            elif state == 0:
+                if text_obs["inventory"]["plant"] > 0:
+                    current_task = "Place sapling."
+                    state = 0.1
+                current_task = "Collect sapling."
+            elif state == 0.1:
+                if "plant" in str(text_obs["surrounding"]):
+                    current_task = "Chop tree."
+                    state = 0.5
+                current_task = "Place sapling."
+            elif state == 0.5: # begining of the game
+                if text_obs["inventory"]["wood"] >= 4:
+                    current_task = "Place crafting table."
+                    state = 1
+                elif text_obs["inventory"]["wood_pickaxe"] >= 1:
+                    current_task = "Mine stone."
+                    state = 3
+                else:
+                    current_task = "Chop tree."
+            elif state == 1: # place crafting table
+                if "crafting_table" in str(text_obs["surrounding"]):
+                    current_task = "Craft wood_pickaxe."
+                    state = 2
+                else:
+                    current_task = "Place crafting table."
+            elif state == 2: # craft wood_pickaxe
+                if text_obs["inventory"]["wood_pickaxe"] >= 1 and text_obs["inventory"]["wood_sword"] >= 1:
+                    current_task = "Mine stone."
+                    state = 3
+                elif text_obs["inventory"]["wood_pickaxe"] >= 1 and text_obs["inventory"]["wood_sword"] < 1:
+                    current_task = "Craft wood_sword."
+                    state = 2.5
+                else:
+                    current_task = "Craft wood_pickaxe."
+            elif state == 2.5: # craft wood_sword
+                if text_obs["inventory"]["wood_sword"] >= 1:
+                    current_task = "Mine stone."
+                    state = 3
+                else:
+                    current_task = "Craft wood_sword."
+            elif state == 3: # mine stone
+                if "crafting_table" in str(text_obs["surrounding"]) and text_obs["inventory"]["stone"] >= 2 and text_obs["inventory"]["wood"] >= 2:
+                    current_task = "Craft stone_pickaxe."
+                    state = 4
+                elif text_obs["inventory"]["wood"] < 4:
+                    current_task = "Chop tree."
+                elif text_obs["inventory"]["stone"] >= 2 and text_obs["inventory"]["wood"] >= 4:
+                    current_task = "Place crafting table."
+                    state = 3.5
+                elif text_obs["inventory"]["stone_pickaxe"] >= 1:
+                    current_task = "Mine iron."
+                    state = 5
+                else:
+                    current_task = "Mine stone."
+            elif state == 3.5: # place crafting table
+                if "crafting_table" in str(text_obs["surrounding"]):
+                    current_task = "Craft stone_pickaxe."
+                    state = 4
+                else:
+                    current_task = "Place crafting table."
+            elif state == 4: # craft stone_pickaxe
+                if "crafting_table" not in str(text_obs["surrounding"]):
+                    current_task = "Place crafting table."
+                    state = 3.5
+                elif text_obs["inventory"]["stone_pickaxe"] >= 1 and text_obs["inventory"]["stone_sword"] >= 1:
+                    current_task = "Mine iron."
+                    state = 5
+                elif text_obs["inventory"]["stone_pickaxe"] >= 1 and text_obs["inventory"]["stone_sword"] < 1:
+                    current_task = "Craft stone_sword."
+                    state = 4.5
+                else:
+                    current_task = "Craft stone_pickaxe."
+            elif state == 4.5: # craft stone_sword
+                if text_obs["inventory"]["stone_sword"] >= 1:
+                    current_task = "Mine iron."
+                    state = 5
+                else:
+                    current_task = "Craft stone_sword."
+            elif state == 5: # mine iron
+                
+                if text_obs["inventory"]["stone"] > 6 and text_obs["inventory"]["iron"] >= 1 and text_obs["inventory"]["coal"] >= 1 and text_obs["inventory"]["wood"] >= 2:
+                    current_task = "Place furnace."
+                    state = 6
+                else:
+                    if cnt < 5:
+                        current_task = "Sleep."
+                        cnt += 1
+                    elif "iron" in str(text_obs["surrounding"]):
+                        current_task = "Mine iron."
+                    elif "coal" in str(text_obs["surrounding"]):
+                        current_task = "Mine coal."
+                    elif "tree" in str(text_obs["surrounding"]):
+                        current_task = "Chop tree."
+                    else:
+                        current_task = "Mine stone."
+            
+            elif state == 6: # place furnace
+                if "furnace" in str(text_obs["surrounding"]):
+                    current_task = "Place crafting table."
+                    state = 6.5
+                else:
+                    current_task = "Place furnace."
+        
+            elif state == 6.5: # place crafting table
+                if "crafting_table" in str(text_obs["surrounding"]):
+                    current_task = "Craft iron_pickaxe."
+                    state = 7
+                else:
+                    current_task = "Place crafting table."
+            
+            elif state == 7: # Craft iron_pickaxe
+                if text_obs["inventory"]["iron_pickaxe"] >= 1:
+                    current_task = "Craft iron_sword."
+                    state = 7.5
+                else:
+                    current_task = "Craft iron_pickaxe."
+            
+            elif state == 7.5: # Craft iron_sword
+                if text_obs["inventory"]["iron_sword"] >= 1:
+                    current_task = "Mine diamond."
+                    state = 8
+                else:
+                    current_task = "Craft iron_sword."
+            
+            elif state == 8: # mine diamond
+                
+                food = text_obs["inner"]["food"]
+                drink = text_obs["inner"]["drink"]
+                energy = text_obs["inner"]["energy"]
+                if text_obs["inventory"]["iron_pickaxe"] >= 1:
+                    current_task = "Mine diamond."
+                    state = 6
+                elif food <= drink and food <= energy and food <= 9:
+                    current_task = "Kill the cow."
+                elif drink < food and drink <= energy and drink <= 9:
+                    current_task = "Drink water."
+                elif energy < food and energy < drink and energy <= 9:
+                    current_task = "Sleep."
+                else:
+                    current_task = "Mine diamond."
+        
+        current_task = str(current_task)
+        history_imgs.append(save_img(obs, current_task))
+        
+        # env step
+        obs = env.set_task(obs, [current_task])
+        action, _ = agent.act(obs, info=info, deterministic=True, render=True)
+        
+        # traj["image"].append(obs["policy"]["image"].tolist())
+        # traj["task_emb"].append(obs["policy"]["task_emb"].tolist())
+        # try:
+        #     traj["actions"].append(all_task.index(current_task))
+        # except:
+        #     traj["actions"].append(4)
+        
+        obs, r, done, info = env.step(action)
+        env_step += 1
+        total_reward += 0 #r[0]
+        original_rewards += r[0,0,0] #info[0]["original_rewards"][0][0]
+    
+
+        if all(done):
+            name = "run_results/crafter.gif" if not random else "run_results/crafter-random.gif"
+            history_imgs[0].save(
+                name, 
+                save_all=True, 
+                append_images=history_imgs[1:], 
+                duration=100, 
+                loop=0
+            )
+            # name = "run_results/buffer/result_{:02d}.json".format(seed)
+            # json.dump(traj, open(name, "w"))
             break
     
     env.close()
     
-    return traj, env_step, total_reward
+    del agent
+    
+    return env_step, total_reward, original_rewards
 
 
 if __name__ == "__main__":
+
+    model = None #"models/crafter_agent-10M-01/"
+    # print("model", model)
     
-    model = "models/crafter_agent-2M-29/"
-    print("model", model)
-    
-    traj_diff = []
     episode_len1 = []
     episode_len2 = []
     total_reward1 = []
     total_reward2 = []
+    original_rewards1 = []
+    original_rewards2 = []
     
     begin = time.time()
-    for seed in range(100):
-        tasks = [
-            "Chop tree.", 
-            "Place crafting table.",
-            "Craft wood_pickaxe.", 
-            "Craft wood_sword.", 
-            "Find stone.", 
-            "Mine stone.", 
-            "Place crafting table.",
-            "Craft stone_pickaxe.", 
-            "Craft stone_sword.", 
-            "Find water.", 
-            "Drink water.", 
-            "Find cows.", 
-            "Kill the cow.", 
-            "Sleep.",
-            "Mine stone.", 
-            "Find water.", 
-            "Drink water.", 
-            "Find cows.", 
-            "Kill the cow.", 
-            "Sleep.",
-            "Mine stone.", 
-        ]
-        cnts = [
-            30, 2, 2, 1, 10, 30, 2, 2, 1, 10, 10, 10, 10, 10, 100, 10, 10, 10, 10, 10, 1000
-        ]
-        traj1, env_step1, r1 = render(seed, tasks, cnts, model)
-        traj2, env_step2, r2 = render(seed, None, None, model)
-        min_len = min(len(traj1), len(traj2))
-        diff = np.array(traj1)[:min_len] - np.array(traj2)[:min_len]
-        diff = np.mean((diff**2).sum(-1).sum(-1).sum(-1))
+    for seed in range(1):
+        
+        env_step1, r1, or1 = render(seed, model, random=False)
+        env_step2, r2, or2 = render(seed, model, random=True)
         
         episode_len1.append(env_step1)
         episode_len2.append(env_step2)
         total_reward1.append(r1)
         total_reward2.append(r2)
-        traj_diff.append(diff)
+        original_rewards1.append(or1)
+        original_rewards2.append(or2)
     
         # print mean
-        print("survival time-step (good instruction):", np.mean(episode_len1))
-        print("instruction following result (good instruction):", np.mean(total_reward1))
-        print("survival time-step (random instruction):", np.mean(episode_len2))
-        print("instruction following result (random instruction):", np.mean(total_reward2))
-        print("traj_diff", np.mean(traj_diff), "time", time.time()-begin)
+        print("survival time-step", np.mean(episode_len1), " ", np.mean(episode_len2))
+        print("original_rewards", np.mean(original_rewards1), " ", np.mean(original_rewards2))
+        print("instruction following rewards", np.mean(total_reward1), " ", np.mean(total_reward2))
 
     print("model", model)
-    
-    
-# result
-
-# model models/crafter_agent-100M-2/ PPO
-# total_step 341.69 total_reward 7.66 traj_diff 362176.9051933416
-
-# model models/crafter_agent-100M-4/  PPO+high_entropy
-# total_step 334.71 total_reward 7.57 traj_diff 379925.13196826645
-
-# model models/crafter_agent-2M-22/ fine-tuned-no_DKL
-# total_step 291.36 total_reward 11.46 traj_diff 543734.2699659602
-
-# model models/crafter_agent-2M-23/ fine-tuned
-# total_step 366.98 total_reward 10.07 traj_diff 527047.964233871
-
-
-# total_step 292.64 total_reward 9.12 traj_diff 472657.5765405597 time 1280.8099598884583                        
-# model models/crafter_agent-10M-30/
-# total_step 342.99 total_reward 8.5 traj_diff 473077.856060225 time 1728.4287180900574                          
-# model models/crafter_agent-10M-31/
-# total_step 356.39 total_reward 10.43 traj_diff 490570.8574656822 time 1743.899439573288                        
-# model models/crafter_agent-10M-32/
-# total_step 325.7 total_reward 10.92 traj_diff 545414.0732909743 time 1545.4534697532654                        
-# model models/crafter_agent-10M-33/
-
-# total_step 358.55 total_reward 6.83 traj_diff 489648.8531827958 time 1869.1202957630157                        
-# model models/crafter_agent-10M-32/
-# total_step 360.76 total_reward 6.51 traj_diff 459902.8622623656 time 1801.3613457679749                        
-# model models/crafter_agent-10M-28/
-# total_step 364.73 total_reward 6.88 traj_diff 461869.5444441244 time 1838.2085411548615                        
-# model models/crafter_agent-2M-23/
-# total_step 353.58 total_reward 7.1 traj_diff 384791.31483870966 time 1835.861520767212                         
-# model models/crafter_agent-100M-2/
-
-# random tasks
-# total_step 335.73 total_reward 14.73 traj_diff 549567.6901632039 time 1716.5807662010193
-# model models/crafter_agent-10M-34/
-# total_step 303.53 total_reward 12.95 traj_diff 561920.0116185134 time 1492.3062028884888
-# model models/crafter_agent-10M-35/
-# total_step 275.99 total_reward 15.92 traj_diff 440635.70799602295 time 1418.0942595005035
-# model models/crafter_agent-10M-36/
-# total_step 337.13 total_reward 10.39 traj_diff 479959.5726845534 time 1725.2639038562775
-# model models/crafter_agent-10M-37/
-
-# given tasks
-# total_step 340.74 total_reward 9.77 traj_diff 570636.0829032259 time 1730.7477412223816                                                        
-# model models/crafter_agent-10M-34/
-# total_step 283.51 total_reward 10.13 traj_diff 575452.5557657283 time 1480.4870274066925                       ─────────────────────────────────
-# model models/crafter_agent-10M-35/
-# total_step 275.26 total_reward 10.5 traj_diff 453112.5234699513 time 1446.4643087387085                        
-# model models/crafter_agent-10M-36/
-# total_step 330.93 total_reward 10.02 traj_diff 511449.4917741935 time 1616.5335485935211                       
-# model models/crafter_agent-10M-37/

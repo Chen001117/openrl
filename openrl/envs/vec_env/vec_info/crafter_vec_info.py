@@ -5,6 +5,8 @@ import numpy as np
 
 from openrl.envs.vec_env.vec_info.base_vec_info import BaseVecInfo
 
+from collections import deque
+
 
 class CrafterVecInfo(BaseVecInfo):
     def __init__(self, parallel_env_num: int, agent_num: int):
@@ -22,6 +24,14 @@ class CrafterVecInfo(BaseVecInfo):
             "original_rewards",
             "instruction_following_rewards",
         ]
+        
+        self.episode_rewards = deque(maxlen=256)
+        self.episode_length = deque(maxlen=256)
+        
+        # achievement
+        self.diamond_suc = deque(maxlen=256)
+        self.iron_sword_suc = deque(maxlen=256)
+        self.iron_pickaxe_suc = deque(maxlen=256)
 
     def statistics(self, buffer: Any) -> Dict[str, Any]:
         # get agent's episode reward
@@ -59,6 +69,43 @@ class CrafterVecInfo(BaseVecInfo):
         for key in new_infos:
             new_infos[key] = np.array(new_infos[key]).mean()
         info_dict.update(new_infos)
+        
+        for step_info in self.episode_infos:
+            for singe_env_info in step_info:
+                assert isinstance(singe_env_info, dict), "singe_env_info must be dict"
+
+                if (
+                    "final_info" in singe_env_info.keys()
+                    and "episode" in singe_env_info["final_info"].keys()
+                ):
+                    self.episode_rewards.append(
+                        singe_env_info["final_info"]["episode"]["r"]
+                    )   
+                    self.episode_length.append(
+                        singe_env_info["final_info"]["episode"]["l"]
+                    )
+                    self.diamond_suc.append(
+                        (singe_env_info["final_info"]["dict_obs"]["inventory"]["diamond"] > 0) * 1.
+                    )
+                    self.iron_sword_suc.append(
+                        (singe_env_info["final_info"]["dict_obs"]["inventory"]["iron_sword"] > 0) * 1.
+                    )
+                    self.iron_pickaxe_suc.append(
+                        (singe_env_info["final_info"]["dict_obs"]["inventory"]["iron_pickaxe"] > 0) * 1.
+                    )
+        
+        if len(self.episode_rewards) > 0:
+            info_dict["episode_rewards_mean"] = np.mean(self.episode_rewards)
+            info_dict["episode_rewards_median"] = np.median(self.episode_rewards)
+            info_dict["episode_rewards_min"] = np.min(self.episode_rewards)
+            info_dict["episode_rewards_max"] = np.max(self.episode_rewards)
+            info_dict["episode_length_mean"] = np.mean(self.episode_length)
+            info_dict["episode_length_median"] = np.median(self.episode_length)
+            info_dict["episode_length_min"] = np.min(self.episode_length)
+            info_dict["episode_length_max"] = np.max(self.episode_length)
+            info_dict["diamond_suc_rate"] = np.mean(self.diamond_suc)
+            info_dict["iron_sword_suc_rate"] = np.mean(self.iron_sword_suc)
+            info_dict["iron_pickaxe_suc_rate"] = np.mean(self.iron_pickaxe_suc)
 
         return info_dict
 

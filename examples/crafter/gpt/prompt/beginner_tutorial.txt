@@ -1,0 +1,17 @@
+You must monitor food, drink, and energy levels, addressing them when they are low.
+Killing cows and eating plants will increase food level. Grass and tree are not edible.
+Drinking water will replenish drink level.
+Sleeping will restore energy.
+Your health level will decrease when attacked by zombies or skeletons.
+Kill zombies and skeletons upon sight.
+When food, drink, and energy levels are high, discover new things, obtain resources, and kill enemies.
+Find water source when water is not visible and the your drink level is low.
+Chop Trees to collect Wood. Note that wood and plants are different things.
+You need 2 wood to place a crafting table and need 4 stones to place a furnace.
+The pickaxe is for mining, while the sword is for attack.
+You need wood to craft wood pickaxe or sword near the crafting table.
+You need stone to craft stone pickaxe or sword near the crafting table.
+You need iron and coal to craft iron pickaxe or sword near the furnace.
+A wood pickaxe is required to collect stone and coal.
+A stone pickaxe is required to collect iron.
+An iron pickaxe is required to collect diamond.

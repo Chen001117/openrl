@@ -15,6 +15,8 @@
 # limitations under the License.
 
 """"""
+import numpy as np
+
 import torch
 import torch.nn as nn
 
@@ -29,6 +31,32 @@ from openrl.modules.networks.utils.rnn import RNNLayer
 from openrl.modules.networks.utils.util import init
 from openrl.utils.util import check_v2 as check
 
+available_actions = [
+    # "Find cows.", 
+    # "Find water.", 
+    # "Find stone.", 
+    # "Find tree.",
+    "Collect sapling.",
+    "Place sapling.",
+    "Chop tree.", 
+    "Kill the cow.", 
+    "Mine stone.", 
+    "Drink water.",
+    "Mine coal.", 
+    "Mine iron.", 
+    "Mine diamond.", 
+    "Kill the zombie.",
+    "Kill the skeleton.", 
+    "Craft wood_pickaxe.", 
+    "Craft wood_sword.",
+    "Place crafting table.", 
+    "Place furnace.", 
+    "Craft stone_pickaxe.",
+    "Craft stone_sword.", 
+    "Craft iron_pickaxe.", 
+    "Craft iron_sword.",
+    "Sleep."
+]
 
 class PolicyNetwork(BasePolicyNetwork):
     def __init__(
@@ -53,6 +81,7 @@ class PolicyNetwork(BasePolicyNetwork):
         self._influence_layer_N = cfg.influence_layer_N
         self._use_policy_vhead = cfg.use_policy_vhead
         self._recurrent_N = cfg.recurrent_N
+        self._alpha = cfg.alpha_value
         self.use_half = use_half
         self.tpdv = dict(dtype=torch.float32, device=device)
 
@@ -126,6 +155,7 @@ class PolicyNetwork(BasePolicyNetwork):
         if self.first_time:
             self.to(self.device)
             self.first_time = False
+            
         if forward_type == "original":
             return self.forward_original(*args, **kwargs)
         elif forward_type == "eval_actions":
@@ -134,7 +164,7 @@ class PolicyNetwork(BasePolicyNetwork):
             raise NotImplementedError
 
     def forward_original(
-        self, raw_obs, rnn_states, masks, action_masks=None, deterministic=False
+        self, raw_obs, rnn_states, masks, action_masks=None, deterministic=False, render=False
     ):
         policy_obs = get_policy_obs(raw_obs)
         if self._mixed_obs:
@@ -153,22 +183,42 @@ class PolicyNetwork(BasePolicyNetwork):
         if action_masks is not None:
             action_masks = check(action_masks, self.use_half, self.tpdv)
 
+        if not render:
+            # get task embeding
+            task_feature = self.critic_base(policy_obs, cnn_only=True)
+            if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+                task_feature, task_rnn_states = self.task_actor(task_feature, rnn_states[:,1:,:], masks)
+            tasks, task_log_probs = self.act2(
+                task_feature, None, deterministic, alpha = self._alpha
+            )
+            # update task_emb in observation
+            task_idxs = tasks.flatten().cpu().numpy()
+            task_name = np.array(available_actions)[task_idxs]
+            task_emb = self.bert(task_name, convert_to_numpy=False) 
+            policy_obs["task_emb"] = torch.stack(task_emb, dim=0)
+
         actor_features = self.base(policy_obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+            actor_features, rnn_states = self.rnn(actor_features, rnn_states[:,:1,:], masks)
 
         if self._use_influence_policy:
             mlp_obs = self.mlp(policy_obs)
             actor_features = torch.cat([actor_features, mlp_obs], dim=1)
 
         actions, action_log_probs = self.act(
-            actor_features, action_masks, deterministic
+            actor_features, action_masks[:,:17], deterministic
         )
+        
+        if not render:
+            actions = torch.cat([actions, tasks], dim=1)
+            action_log_probs = torch.cat([action_log_probs, task_log_probs], dim=1)
+            rnn_states = torch.cat([rnn_states, task_rnn_states], dim=1)
+        
         return actions, action_log_probs, rnn_states
 
     def eval_actions(
-        self, obs, rnn_states, action, masks, action_masks=None, active_masks=None
+        self, obs, rnn_states, action, masks, action_masks=None, active_masks=None, ref=False, return_task_entropy=False
     ):
         if self._mixed_obs:
             for key in obs.keys():
@@ -191,7 +241,7 @@ class PolicyNetwork(BasePolicyNetwork):
         actor_features = self.base(obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
-            actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
+            actor_features, actor_rnn_states = self.rnn(actor_features, rnn_states[:,:1,:], masks)
 
         if self._use_influence_policy:
             mlp_obs = self.mlp(obs)
@@ -199,14 +249,30 @@ class PolicyNetwork(BasePolicyNetwork):
 
         action_log_probs, dist_entropy = self.act.evaluate_actions(
             actor_features,
-            action,
-            action_masks,
+            action[:,:1],
+            action_masks[:,:17] if action_masks is not None else None,
             active_masks=active_masks if self._use_policy_active_masks else None,
         )
+        
+        if not ref:
+            task_feature = self.critic_base(obs, cnn_only=True)
+            if self._use_naive_recurrent_policy or self._use_recurrent_policy:
+                task_feature, task_rnn_states = self.task_actor(task_feature, rnn_states[:,1:,:], masks)
+            task_log_probs, task_entropy = self.act2.evaluate_actions(
+                task_feature,
+                action[:,1:],
+                action_masks[:,17:] if action_masks is not None else None,
+                active_masks=active_masks if self._use_policy_active_masks else None,
+                alpha = self._alpha,
+            )
+            action_log_probs = torch.cat([action_log_probs, task_log_probs], dim=1)
 
         values = self.v_out(actor_features) if self._use_policy_vhead else None
-
-        return action_log_probs, dist_entropy, values
+        
+        if return_task_entropy:
+            return action_log_probs, dist_entropy, values, task_entropy
+        else:
+            return action_log_probs, dist_entropy, values
 
     def get_policy_values(self, obs, rnn_states, masks):
         if self._mixed_obs:

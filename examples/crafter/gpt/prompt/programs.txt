@@ -1,0 +1,28 @@
+def do(language_instruction: str):
+    """
+    example:
+    observation = agent.do("Chop tree.") # the agent will try to chop trees and get woods.
+    available language instructions:
+    - "Chop tree."
+    - "Drink water."
+    - "Mine stone."
+    - "Mine coal."
+    - "Mine iron."
+    - "Mine diamond."
+    - "Kill the cow."
+    - "Kill the zombie."
+    - "Kill the skeleton."
+    - "Craft wood_pickaxe."
+    - "Craft wood_sword."
+    - "Place crafting table."
+    - "Craft stone_pickaxe."
+    - "Craft stone_sword."
+    - "Craft iron_pickaxe."
+    - "Craft iron_sword."
+    - "Find cows."
+    - "Find water."
+    - "Sleep."
+    - "Place furnace."
+    """
+    # the function will do the action according to the language instruction then return observation
+    return observation

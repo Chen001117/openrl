@@ -107,6 +107,7 @@ class PPONet(BaseNet):
         action_masks: Optional[np.ndarray] = None,
         deterministic: bool = False,
         episode_starts: Optional[np.ndarray] = None,
+        render: bool = False
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         if episode_starts is not None:
             self.rnn_states_actor = reset_rnn_states(
@@ -124,6 +125,7 @@ class PPONet(BaseNet):
             masks=self.masks,
             action_masks=action_masks,
             deterministic=deterministic,
+            render=render,
         )
 
         return actions, self.rnn_states_actor

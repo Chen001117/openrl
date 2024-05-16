@@ -53,13 +53,25 @@ class CrafterWrapper(Wrapper):
             low=0, high=255, shape=shape, dtype=self.env.observation_space.dtype
         )
 
-        self.action_space = gym.spaces.Discrete(self.env.action_space.n)
+        self.action_space = gym.spaces.MultiDiscrete(
+            [self.env.action_space.n, 20] # task_dim
+        )
         
         self.seed = 42
 
     def step(self, action: int):
-        obs, reward, done, truncated, info = self.env.step(action)
+
+        obs, reward, done, truncated, info = self.env.step(action[0])
         obs = self.convert_observation(obs)
+        
+        # cheating!!!
+        action_masks = np.ones(self.action_space.nvec.sum())
+        if "gained 1 stone" in info["obj_diff"]:
+            action_masks[7] = 0.
+        info.update({
+            "action_masks": action_masks,
+        })
+        
         return obs, reward, done, truncated, info
 
     def reset(
@@ -75,6 +87,11 @@ class CrafterWrapper(Wrapper):
             seed = self.seed
         obs, info = self.env.reset(seed, options)
         obs = self.convert_observation(obs)
+        
+        action_masks = np.ones(self.action_space.nvec.sum())
+        info.update({
+            "action_masks": action_masks,
+        })
 
         return obs, info
 

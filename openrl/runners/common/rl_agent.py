@@ -31,6 +31,135 @@ from openrl.utils.callbacks.callbacks import BaseCallback, CallbackList, Convert
 from openrl.utils.callbacks.processbar_callback import ProgressBarCallback
 from openrl.utils.type_aliases import MaybeCallback
 
+available_actions = [
+    # "Find cows.", 
+    # "Find water.", 
+    # "Find stone.", 
+    # "Find tree.",
+    "Collect sapling.",
+    "Place sapling.",
+    "Chop tree.", 
+    "Kill the cow.", 
+    "Mine stone.", 
+    "Drink water.",
+    "Mine coal.", 
+    "Mine iron.", 
+    "Mine diamond.", 
+    "Kill the zombie.",
+    "Kill the skeleton.", 
+    "Craft wood_pickaxe.", 
+    "Craft wood_sword.",
+    "Place crafting table.", 
+    "Place furnace.", 
+    "Craft stone_pickaxe.",
+    "Craft stone_sword.", 
+    "Craft iron_pickaxe.", 
+    "Craft iron_sword.",
+    "Sleep."
+]
+
+def clone_module(module, memo=None):
+    """
+
+    [[Source]](https://github.com/learnables/learn2learn/blob/master/learn2learn/utils.py)
+
+    **Description**
+
+    Creates a copy of a module, whose parameters/buffers/submodules
+    are created using PyTorch's torch.clone().
+
+    This implies that the computational graph is kept, and you can compute
+    the derivatives of the new modules' parameters w.r.t the original
+    parameters.
+
+    **Arguments**
+
+    * **module** (Module) - Module to be cloned.
+
+    **Return**
+
+    * (Module) - The cloned module.
+
+    **Example**
+
+    ~~~python
+    net = nn.Sequential(Linear(20, 10), nn.ReLU(), nn.Linear(10, 2))
+    clone = clone_module(net)
+    error = loss(clone(X), y)
+    error.backward()  # Gradients are back-propagate all the way to net.
+    ~~~
+    """
+    # NOTE: This function might break in future versions of PyTorch.
+
+    # TODO: This function might require that module.forward()
+    #       was called in order to work properly, if forward() instanciates
+    #       new variables.
+    # TODO: We can probably get away with a shallowcopy.
+    #       However, since shallow copy does not recurse, we need to write a
+    #       recursive version of shallow copy.
+    # NOTE: This can probably be implemented more cleanly with
+    #       clone = recursive_shallow_copy(model)
+    #       clone._apply(lambda t: t.clone())
+
+    if memo is None:
+        # Maps original data_ptr to the cloned tensor.
+        # Useful when a Module uses parameters from another Module; see:
+        # https://github.com/learnables/learn2learn/issues/174
+        memo = {}
+
+    # First, create a copy of the module.
+    # Adapted from:
+    # https://github.com/pytorch/pytorch/blob/65bad41cbec096aa767b3752843eddebf845726f/torch/nn/modules/module.py#L1171
+    if not isinstance(module, torch.nn.Module):
+        return module
+    clone = module.__new__(type(module))
+    clone.__dict__ = module.__dict__.copy()
+    clone._parameters = clone._parameters.copy()
+    clone._buffers = clone._buffers.copy()
+    clone._modules = clone._modules.copy()
+
+    # Second, re-write all parameters
+    if hasattr(clone, '_parameters'):
+        for param_key in module._parameters:
+            if module._parameters[param_key] is not None:
+                param = module._parameters[param_key]
+                param_ptr = param.data_ptr
+                if param_ptr in memo:
+                    clone._parameters[param_key] = memo[param_ptr]
+                else:
+                    cloned = param.clone()
+                    clone._parameters[param_key] = cloned
+                    memo[param_ptr] = cloned
+
+    # Third, handle the buffers if necessary
+    if hasattr(clone, '_buffers'):
+        for buffer_key in module._buffers:
+            if clone._buffers[buffer_key] is not None and \
+                    clone._buffers[buffer_key].requires_grad:
+                buff = module._buffers[buffer_key]
+                buff_ptr = buff.data_ptr
+                if buff_ptr in memo:
+                    clone._buffers[buffer_key] = memo[buff_ptr]
+                else:
+                    cloned = buff.clone()
+                    clone._buffers[buffer_key] = cloned
+                    memo[param_ptr] = cloned
+
+    # Then, recurse for each submodule
+    if hasattr(clone, '_modules'):
+        for module_key in clone._modules:
+            clone._modules[module_key] = clone_module(
+                module._modules[module_key],
+                memo=memo,
+            )
+
+    # Finally, rebuild the flattened parameters for RNNs
+    # See this issue for more details:
+    # https://github.com/learnables/learn2learn/issues/139
+    if hasattr(clone, 'flatten_parameters'):
+        clone = clone._apply(lambda x: x)
+    return clone
+
 
 class RLAgent(BaseAgent):
     def __init__(
@@ -94,6 +223,8 @@ class RLAgent(BaseAgent):
             self.exp_name = "rl"
         else:
             self.exp_name = self._cfg.experiment_name
+
+        self._alpha = self._cfg.alpha_value
 
     @abstractmethod
     def train(
@@ -210,18 +341,108 @@ class RLAgent(BaseAgent):
                 )
         else:
             self.net.module = torch.load(path)
+            
+            fine_tune = False
+            from_scratch = False # do not support at this moment
+            if fine_tune:
+                # fine tuned
+                from torch import nn
+                from openrl.envs.crafter.bert import BertEncoder
+                from openrl.modules.networks.utils.act import ACTLayer
+                from openrl.modules.networks.utils.mlp import MLPLayer
+                from openrl.modules.networks.utils.rnn import RNNLayer
+                
+                # base network
+                net = self.net.module.models['policy'].base
+                net.out_layer = nn.Linear(net.hidden_size*2, net.hidden_size)
+                with torch.no_grad():
+                    net.out_layer.weight.data[:,net.hidden_size:] *= 0
+                    net.out_layer.weight.data[:,:net.hidden_size] = torch.eye(net.hidden_size)
+                    net.out_layer.bias.data *= 0
+                net.out_layer.to(self.net.module.models['policy'].device)
+                opt = self.net.module.optimizers["policy"]
+                opt.add_param_group({"params": net.out_layer.parameters(), "name": "out_layer"})
+                # critic network
+                net = self.net.module.models['critic'].base
+                net.out_layer = torch.nn.Linear(net.hidden_size*2, net.hidden_size)
+                with torch.no_grad():
+                    net.out_layer.weight.data[:,net.hidden_size:] *= 0
+                    net.out_layer.weight.data[:,:net.hidden_size] = torch.eye(net.hidden_size)
+                    net.out_layer.bias.data *= 0
+                net.out_layer.to(self.net.module.models['critic'].device)
+                opt = self.net.module.optimizers["critic"]
+                opt.add_param_group({"params": net.out_layer.parameters(), "name": "out_layer"})
+                # task actor
+                net = self.net.module.models['policy']
+                net.bert = BertEncoder(device=net.device)
+                net.task_actor = RNNLayer(
+                    net.hidden_size,
+                    net.hidden_size,
+                    net._recurrent_N,
+                    net._use_orthogonal,
+                )
+                net2 = self.net.module.models['critic']
+                net.task_actor.load_state_dict(net2.rnn.state_dict())
+                act_space = gym.spaces.Discrete(20) # task_dim
+                net.act2 = ACTLayer(act_space, net.hidden_size, net._use_orthogonal, net._gain)
+                net.task_actor.to(self.net.module.models['policy'].device)
+                net.act2.to(self.net.module.models['policy'].device)
+                opt = self.net.module.optimizers["policy"]
+                opt.add_param_group({"params": net.task_actor.parameters(), "name": "task_layer"})
+                opt.add_param_group({"params": net.act2.parameters(), "name": "task_layer"})
+                # assign critic's CNN to actor
+                net = self.net.module.models['policy']
+                net.critic_base = self.net.module.models['critic'].base
+                # assign actor's task_actor to critic
+                net = self.net.module.models['critic']
+                net.task_actor = self.net.module.models['policy'].task_actor
+                net.bert = self.net.module.models['policy'].bert
+                net.act2 = self.net.module.models['policy'].act2
+                # new value norm
+                net = self.net.module.models["critic"]
+                net.ex_value_normalizer = clone_module(net.value_normalizer)
+                # set alpha
+                net = self.net.module.models["critic"]
+                net._alpha = self._alpha
+                net = self.net.module.models["policy"]
+                net._alpha = self._alpha
+            elif from_scratch:
+                net = self.net.module.models['policy']
+                net.out_layer = nn.Linear(net.hidden_size*2, net.hidden_size)
+                net.out_layer.to(self.net.module.models['policy'].device)
+                opt = self.net.module.optimizers["policy"]
+                opt.add_param_group({"params": net.out_layer.parameters()})
+                net = self.net.module.models['critic'].base
+                net.out_layer = torch.nn.Linear(net.hidden_size*2, net.hidden_size)
+                net.out_layer.to(self.net.module.models['critic'].device)
+                opt = self.net.module.optimizers["critic"]
+                opt.add_param_group({"params": net.out_layer.parameters()})
+            # #########################
+            # # mlp
+            # net = self.net.module.models['policy'].base
+            # net.mlp = nn.Sequential(
+            #     nn.Linear(22, net.hidden_size),
+            #     nn.ReLU(),
+            #     nn.Linear(net.hidden_size, net.hidden_size),
+            #     nn.ReLU(),
+            #     nn.Linear(net.hidden_size, net.hidden_size),
+            # )
+            # net.mlp.to(self.net.module.models['policy'].device)
+            # opt = self.net.module.optimizers["policy"]
+            # opt.add_param_group({"params": net.mlp.parameters(), "name": "out_layer"})
+            # net = self.net.module.models['critic'].base
+            # net.mlp = nn.Sequential(
+            #     nn.Linear(22, net.hidden_size),
+            #     nn.ReLU(),
+            #     nn.Linear(net.hidden_size, net.hidden_size),
+            #     nn.ReLU(),
+            #     nn.Linear(net.hidden_size, net.hidden_size),
+            # )
+            # net.mlp.to(self.net.module.models['critic'].device)
+            # opt = self.net.module.optimizers["critic"]
+            # opt.add_param_group({"params": net.mlp.parameters(), "name": "out_layer"})
+            
         self.net.reset()
-
-        # module = torch.load(path)
-        # self.net.module.models["critic"].base = module.models["critic"].base
-        # self.net.module.models["critic"].rnn = module.models["critic"].rnn
-        # self.net.module.models["critic"].v_out = module.models["critic"].v_out
-        # # self.net.module.models["critic"].out_layer = module.models["critic"].base.out_layer
-        # self.net.module.models["policy"].base = module.models["policy"].base
-        # self.net.module.models["policy"].rnn = module.models["policy"].rnn
-        # self.net.module.models["policy"].act = module.models["policy"].act
-        # # self.net.module.models["policy"].out_layer = module.models["policy"].base.out_layer
-        # self.net.reset()
 
     def load_policy(self, path: Union[str, pathlib.Path, io.BufferedIOBase]) -> None:
         self.net.load_policy(path)

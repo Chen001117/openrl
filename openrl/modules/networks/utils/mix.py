@@ -46,31 +46,37 @@ class MIXBase(nn.Module):
             self.mlp = MLPLayer(
                 obs_shape["task_emb"].shape[0], self.hidden_size, layer_N, self._use_orthogonal, self._activation_id,
             )
-            
-        self.out_layer = nn.Linear(self.hidden_size*2, self.hidden_size)
-        # used when init fine-tuned model
-        # with torch.no_grad():
-        #     self.out_layer.weight.data[:,self.hidden_size:] *= 0
-        #     self.out_layer.weight.data[:,:self.hidden_size] = torch.eye(self.hidden_size)
-        #     self.out_layer.bias.data *= 0
+        
+        # self.out_layer = torch.nn.Linear(self.hidden_size*2, self.hidden_size)
+    
+    def set_isbase(self):
+        self.isbase = True
+        
 
-    def forward(self, x):
+    def forward(self, x, cnn_only=False):
+        
+        try:
+            self.isbase
+        except:
+            self.isbase = False
         
         out_x = None
         if len(self.cnn_keys) > 0:
             cnn_input = self._build_cnn_input(x)
-            out_x = self.cnn(cnn_input)
+            out_x = self.cnn(cnn_input).detach()
 
+        if cnn_only or self.isbase:
+            return out_x
+        
         if len(self.mlp_keys) > 0:
             mlp_input = self._build_mlp_input(x)
-            mlp_x = self.mlp(mlp_input).view(mlp_input.size(0), -1)
+            mlp_x = self.mlp(mlp_input).view(mlp_input.size(0), -1) 
 
             if out_x is not None:
                 out_x = torch.cat([out_x, mlp_x], dim=1)  # ! wrong
+                out_x = self.out_layer(out_x)
             else:
                 out_x = mlp_x
-        
-        out_x = self.out_layer(out_x)
         
         return out_x
 
