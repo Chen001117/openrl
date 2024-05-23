@@ -2,7 +2,11 @@ seed: 0
 lr: 7e-4
 critic_lr: 7e-4
 episode_length: 512
+<<<<<<< HEAD
 ppo_epoch: 5
+=======
+ppo_epochs: 5
+>>>>>>> 2993d08ceecdb4fadc190fad513bc7c08db70e1d
 data_chunk_length: 8
 num_mini_batch: 8
 run_dir: ./run_results/
