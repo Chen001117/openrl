@@ -34,7 +34,7 @@ def train():
     # create the neural network
     net = Net(env, cfg=cfg, device="cuda")
     # initialize the trainer
-    agent = Agent(net, use_wandb=True)
+    agent = Agent(net, use_wandb=True, project_name="Crafter")
     # start training
     agent.train(total_time_steps=100000000)
     # save the trained model
