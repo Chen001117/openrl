@@ -56,8 +56,13 @@ class CrafterWrapper(Wrapper):
         self.rand_seed = 42
 
     def step(self, action: int):
+        
         obs, reward, done, truncated, info = self.env.step(action)
         obs = self.convert_observation(obs)
+        
+        self.env_step += 1
+        self.total_rew += reward
+        info.update({"episode": {"r": self.total_rew, "l": self.env_step}})
 
         return obs, reward, done, truncated, info
 
@@ -75,6 +80,10 @@ class CrafterWrapper(Wrapper):
         
         obs, info = self.env.reset(self.rand_seed, options)
         obs = self.convert_observation(obs)
+        
+        self.env_step = 0
+        self.total_rew = 0
+        info.update({"episode": {"r": self.total_rew, "l": self.env_step}})
 
         return obs, info
 

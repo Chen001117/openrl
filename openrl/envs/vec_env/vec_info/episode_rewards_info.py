@@ -26,8 +26,9 @@ from openrl.envs.vec_env.vec_info.simple_vec_info import SimpleVecInfo
 class EPS_RewardInfo(SimpleVecInfo):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.episode_rewards = deque(maxlen=100)
-
+        self.episode_rewards = deque(maxlen=256)
+        self.episode_length = deque(maxlen=256)
+        
     def statistics(self, buffer: Any) -> Dict[str, Any]:
         info_dict = super().statistics(buffer)
         for step_info in self.infos:
@@ -41,11 +42,18 @@ class EPS_RewardInfo(SimpleVecInfo):
                     self.episode_rewards.append(
                         singe_env_info["final_info"]["episode"]["r"]
                     )
+                    self.episode_length.append(
+                        singe_env_info["final_info"]["episode"]["l"]
+                    )
 
         if len(self.episode_rewards) > 0:
             info_dict["episode_rewards_mean"] = np.mean(self.episode_rewards)
             info_dict["episode_rewards_median"] = np.median(self.episode_rewards)
             info_dict["episode_rewards_min"] = np.min(self.episode_rewards)
             info_dict["episode_rewards_max"] = np.max(self.episode_rewards)
+            info_dict["episode_length_mean"] = np.mean(self.episode_length)
+            info_dict["episode_length_median"] = np.median(self.episode_length)
+            info_dict["episode_length_min"] = np.min(self.episode_length)
+            info_dict["episode_length_max"] = np.max(self.episode_length)
 
         return info_dict
